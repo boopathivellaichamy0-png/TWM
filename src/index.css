@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: rgba(226, 232, 240, 0.8);
+  }
+  
+  body {
+    background-color: #f8fafc;
+    background-image: 
+      radial-gradient(at 10% 10%, rgba(14, 165, 233, 0.05) 0px, transparent 50%),
+      radial-gradient(at 90% 90%, rgba(2, 132, 199, 0.04) 0px, transparent 50%);
+    background-attachment: fixed;
+    min-height: 100dvh;
+    color: #0f172a;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Double-Bezel Nested Shell Styling */
+.bezel-shell {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 
+    0 1px 3px 0 rgba(15, 23, 42, 0.04),
+    0 10px 30px -10px rgba(14, 165, 233, 0.06);
+}
+
+.bezel-core {
+  background: #ffffff;
+  border: 1px solid rgba(241, 245, 249, 0.9);
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Smooth springy hover & tactile press */
+.tactile-btn {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tactile-btn:active {
+  transform: scale(0.97);
+}
+
+/* Number ticker and mono accents */
+.num-tabular {
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom discreet scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
