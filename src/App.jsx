@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Header } from './components/Header';
-import { Navigation } from './components/Navigation';
+import { Sidebar } from './components/Sidebar';
 import { CaneEntries } from './components/CaneEntries';
 import { AddCustomer } from './components/AddCustomer';
 import { BendingCustomers } from './components/BendingCustomers';
@@ -254,9 +253,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-[#f8fafc]">
-      {/* Top Header with Embedded Navigation, Cloud Sync and Install App triggers */}
-      <Header
+    <div className="min-h-[100dvh] flex flex-col md:flex-row bg-[#f8fafc]">
+      {/* 1. Vertical Left-Side Navbar (Permanent on Desktop/Tablet, Slide-out on Mobile) */}
+      <Sidebar
         customers={customers}
         onPrintRoute={() => setIsPrintModalOpen(true)}
         activeTab={activeTab}
@@ -267,50 +266,78 @@ export default function App() {
         onOpenCloudSync={() => setIsCloudModalOpen(true)}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 pb-16">
-        {activeTab === 'entries' && (
-          <CaneEntries
-            customers={customers}
-            onUpdateEntry={handleUpdateEntry}
-            onNavigateToAddCustomer={() => setActiveTab('addCustomer')}
-            onDeleteCustomer={handleDeleteCustomer}
-            businessInfo={businessInfo}
-          />
-        )}
+      {/* 2. Main Content Area on the right */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <main className="flex-1 px-3 sm:px-6 lg:px-8 py-5 pb-16 max-w-6xl w-full mx-auto">
+          {activeTab === 'entries' && (
+            <CaneEntries
+              customers={customers}
+              onUpdateEntry={handleUpdateEntry}
+              onNavigateToAddCustomer={() => setActiveTab('addCustomer')}
+              onDeleteCustomer={handleDeleteCustomer}
+              businessInfo={businessInfo}
+            />
+          )}
 
-        {activeTab === 'todayUpdate' && (
-          <TodaysUpdate
-            customers={customers}
-            onNavigateToEntries={() => setActiveTab('entries')}
-            businessInfo={businessInfo}
-          />
-        )}
+          {activeTab === 'todayUpdate' && (
+            <TodaysUpdate
+              customers={customers}
+              onNavigateToEntries={() => setActiveTab('entries')}
+              businessInfo={businessInfo}
+            />
+          )}
 
-        {activeTab === 'allDates' && (
-          <AllDatesHistory
-            customers={customers}
-            onNavigateToEntries={() => setActiveTab('entries')}
-            onDeleteCustomer={handleDeleteCustomer}
-          />
-        )}
+          {activeTab === 'allDates' && (
+            <AllDatesHistory
+              customers={customers}
+              onNavigateToEntries={() => setActiveTab('entries')}
+              onDeleteCustomer={handleDeleteCustomer}
+            />
+          )}
 
-        {activeTab === 'addCustomer' && (
-          <AddCustomer
-            onAddCustomer={handleAddCustomer}
-            onCancel={() => setActiveTab('entries')}
-          />
-        )}
+          {activeTab === 'addCustomer' && (
+            <AddCustomer
+              onAddCustomer={handleAddCustomer}
+              onCancel={() => setActiveTab('entries')}
+            />
+          )}
 
-        {activeTab === 'bending' && (
-          <BendingCustomers
-            customers={customers}
-            onRecordPayment={handleRecordPayment}
-            businessInfo={businessInfo}
-            onNavigateToEntries={() => setActiveTab('entries')}
-          />
-        )}
-      </main>
+          {activeTab === 'bending' && (
+            <BendingCustomers
+              customers={customers}
+              onRecordPayment={handleRecordPayment}
+              businessInfo={businessInfo}
+              onNavigateToEntries={() => setActiveTab('entries')}
+            />
+          )}
+        </main>
+
+        {/* Discreet Footer */}
+        <footer className="py-5 border-t border-slate-200/80 bg-white/50 text-center text-xs text-slate-500">
+          <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 font-medium">
+              <Drop weight="fill" className="w-4 h-4 text-ocean-600" />
+              <span className="font-bold text-slate-800">Tamilan Waters</span>
+              <span>• 20L Water Can Supply Management</span>
+            </div>
+            <div className="flex items-center gap-3 text-slate-500 text-xs">
+              <button 
+                onClick={() => setIsCloudModalOpen(true)}
+                className="text-ocean-700 hover:underline font-semibold"
+              >
+                {isCloudConnected ? '🟢 Cloud Synced' : '☁️ Connect Cloud'}
+              </button>
+              <span>•</span>
+              <button 
+                onClick={handleTriggerInstall}
+                className="text-ocean-700 hover:underline font-semibold"
+              >
+                Install Mobile App
+              </button>
+            </div>
+          </div>
+        </footer>
+      </div>
 
       {/* Printable Delivery Manifest Modal */}
       <DeliverySheetModal
@@ -331,32 +358,6 @@ export default function App() {
         }}
         customers={customers}
       />
-
-      {/* Discreet Footer */}
-      <footer className="py-6 border-t border-slate-200/80 bg-white/50 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 font-medium">
-            <Drop weight="fill" className="w-4 h-4 text-ocean-600" />
-            <span className="font-bold text-slate-800">Tamilan Waters</span>
-            <span>• 20L Water Can Supply Management</span>
-          </div>
-          <div className="flex items-center gap-3 text-slate-500 text-xs">
-            <button 
-              onClick={() => setIsCloudModalOpen(true)}
-              className="text-ocean-700 hover:underline font-semibold"
-            >
-              {isCloudConnected ? '🟢 Cloud Synced' : '☁️ Connect Cloud'}
-            </button>
-            <span>•</span>
-            <button 
-              onClick={handleTriggerInstall}
-              className="text-ocean-700 hover:underline font-semibold"
-            >
-              Install Mobile App
-            </button>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
