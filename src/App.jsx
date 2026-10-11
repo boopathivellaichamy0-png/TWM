@@ -7,10 +7,12 @@ import { BendingCustomers } from './components/BendingCustomers';
 import { TodaysUpdate } from './components/TodaysUpdate';
 import { AllDatesHistory } from './components/AllDatesHistory';
 import { DeliverySheetModal } from './components/DeliverySheetModal';
+import { DataSafetyModal } from './components/DataSafetyModal';
 import { INITIAL_CUSTOMERS, DEFAULT_BUSINESS_INFO } from './data/initialData';
-import { Drop, Heart } from '@phosphor-icons/react';
+import { Drop } from '@phosphor-icons/react';
 
 const STORAGE_KEY = 'tamilan_waters_customers_live';
+const SNAPSHOTS_KEY = 'tamilan_waters_auto_snapshots_v1';
 
 export default function App() {
   const [customers, setCustomers] = useState(() => {
@@ -36,16 +38,71 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('entries'); // entries | todayUpdate | allDates | bending | addCustomer
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isDataSafetyModalOpen, setIsDataSafetyModalOpen] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
   const [businessInfo] = useState(DEFAULT_BUSINESS_INFO);
 
-  // Sync with localStorage whenever customers changes
+  // Capture PWA installation prompt event
+  useEffect(() => {
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  // Sync with localStorage & maintain rolling auto-recovery snapshots
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(customers));
+
+      // Save rolling safety snapshot if customers exist
+      if (customers && customers.length > 0) {
+        const raw = localStorage.getItem(SNAPSHOTS_KEY);
+        const snaps = raw ? JSON.parse(raw) : [];
+        const lastTime = snaps[0]?.timestamp ? new Date(snaps[0].timestamp).getTime() : 0;
+        
+        // Save new snapshot if 1 minute passed or if first snapshot
+        if (Date.now() - lastTime > 60000 || snaps.length === 0) {
+          const newSnap = {
+            timestamp: new Date().toISOString(),
+            customers
+          };
+          const updatedSnaps = [newSnap, ...snaps.slice(0, 4)]; // Keep last 5 snapshots
+          localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(updatedSnaps));
+        }
+      }
     } catch (e) {
       console.error('Failed to save to localStorage', e);
     }
   }, [customers]);
+
+  // Trigger app installation prompt
+  const handleTriggerInstall = () => {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      deferredInstallPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          setDeferredInstallPrompt(null);
+        }
+      });
+    } else {
+      // Open modal on install guide tab
+      setIsDataSafetyModalOpen(true);
+    }
+  };
+
+  // Restore customer list from backup or snapshot
+  const handleRestoreCustomers = (restoredCustomers) => {
+    setCustomers(restoredCustomers);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(restoredCustomers));
+    } catch (e) {
+      console.error('Failed to persist restored customers', e);
+    }
+  };
 
   // Update a customer's entry
   const handleUpdateEntry = (customerId, updates) => {
@@ -127,34 +184,17 @@ export default function App() {
     }));
   };
 
-  // Reset / Clear all data
-  const handleResetData = () => {
-    if (window.confirm("Clear all customer entries and reset to a completely fresh empty site?")) {
-      setCustomers([]);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
-    }
-  };
-
-  // Metric counts for tab badges
-  const bendingCount = customers.filter(c => {
-    const todayCans = c.todayEntry?.cansBought || 0;
-    const rate = c.amountPerCane || 0;
-    const todayPaid = c.todayEntry?.amountPaid || 0;
-    const todayBending = (todayCans * rate) - todayPaid;
-    const total = (c.previousBendingAmount || 0) + todayBending;
-    return total > 0;
-  }).length;
-
-  const todayDeliveredCount = customers.filter(c => (c.todayEntry?.cansBought || 0) > 0).length;
-
   return (
     <div className="min-h-[100dvh] flex flex-col bg-[#f8fafc]">
-      {/* Top Header with Embedded Navigation near Name */}
+      {/* Top Header with Embedded Navigation, Data Safety and Install App triggers */}
       <Header
         customers={customers}
         onPrintRoute={() => setIsPrintModalOpen(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        onOpenDataSafety={() => setIsDataSafetyModalOpen(true)}
+        onTriggerInstall={handleTriggerInstall}
+        isInstallable={Boolean(deferredInstallPrompt)}
       />
 
       {/* Main Content Area */}
@@ -208,6 +248,17 @@ export default function App() {
         businessInfo={businessInfo}
       />
 
+      {/* Data Safety, Backup & App Installation Modal */}
+      <DataSafetyModal
+        isOpen={isDataSafetyModalOpen}
+        onClose={() => setIsDataSafetyModalOpen(false)}
+        customers={customers}
+        onRestoreCustomers={handleRestoreCustomers}
+        businessInfo={businessInfo}
+        deferredInstallPrompt={deferredInstallPrompt}
+        onTriggerInstall={handleTriggerInstall}
+      />
+
       {/* Discreet Footer */}
       <footer className="py-6 border-t border-slate-200/80 bg-white/50 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -216,8 +267,20 @@ export default function App() {
             <span className="font-bold text-slate-800">Tamilan Waters</span>
             <span>• 20L Water Can Supply Management</span>
           </div>
-          <div className="text-slate-500 text-xs">
-            Designed with Taste Skill standards • Anti-slop Double-Bezel Architecture
+          <div className="flex items-center gap-3 text-slate-500 text-xs">
+            <button 
+              onClick={() => setIsDataSafetyModalOpen(true)}
+              className="text-ocean-700 hover:underline font-semibold"
+            >
+              Data Safety & Backup
+            </button>
+            <span>•</span>
+            <button 
+              onClick={handleTriggerInstall}
+              className="text-ocean-700 hover:underline font-semibold"
+            >
+              Install Mobile App
+            </button>
           </div>
         </div>
       </footer>

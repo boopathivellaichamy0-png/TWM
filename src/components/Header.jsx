@@ -7,14 +7,19 @@ import {
   UserPlus,
   CalendarCheck,
   ClockCounterClockwise,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck,
+  DeviceMobile
 } from '@phosphor-icons/react';
 
 export function Header({ 
   customers, 
   onPrintRoute, 
   activeTab, 
-  setActiveTab 
+  setActiveTab,
+  onOpenDataSafety,
+  onTriggerInstall,
+  isInstallable
 }) {
   // Today's metrics
   const todayDeliveredCans = customers.reduce((sum, c) => sum + (c.todayEntry?.cansBought || 0), 0);
@@ -129,14 +134,35 @@ export function Header({
         </div>
 
         {/* Quick action buttons on the right */}
-        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto shrink-0">
+          {/* Mobile Install App Button */}
+          <button
+            onClick={onTriggerInstall}
+            className="tactile-btn inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-ocean-50 text-ocean-800 border border-ocean-200 shadow-2xs hover:bg-ocean-100 transition-colors"
+            title="Install Tamilan Waters App on mobile / desktop"
+          >
+            <DeviceMobile weight="bold" className="w-4 h-4 text-ocean-600" />
+            <span>Install App</span>
+          </button>
+
+          {/* Data Safety & Backup Button */}
+          <button
+            onClick={onOpenDataSafety}
+            className="tactile-btn inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white shadow-2xs hover:bg-slate-800 transition-colors"
+            title="Data Safety, Backup and Restore"
+          >
+            <ShieldCheck weight="bold" className="w-4 h-4 text-emerald-400" />
+            <span>Data Safety</span>
+          </button>
+
+          {/* Delivery Sheet Button */}
           <button
             onClick={onPrintRoute}
-            className="tactile-btn inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 hover:text-slate-900"
+            className="tactile-btn inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-2xs hover:bg-slate-50 hover:text-slate-900"
             title="Print daily delivery and collection sheet"
           >
             <Printer weight="bold" className="w-3.5 h-3.5 text-ocean-600" />
-            <span>Delivery Sheet</span>
+            <span className="hidden sm:inline">Delivery Sheet</span>
           </button>
         </div>
       </div>
