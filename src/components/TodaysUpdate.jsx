@@ -57,6 +57,7 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
   }, [todayRecords, searchQuery]);
 
   const totalCansDelivered = todayRecords.reduce((s, r) => s + r.cansDelivered, 0);
+  const totalEmptyCollected = todayRecords.reduce((s, r) => s + r.emptyCansReturned, 0);
   const totalAmountCollected = todayRecords.reduce((s, r) => s + r.amountCollected, 0);
   const totalBendingToday = todayRecords.reduce((s, r) => s + r.bendingToday, 0);
 
@@ -65,13 +66,14 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
     msg += `Date: ${todayDateFormatted}\n`;
     msg += `--------------------------------\n`;
     msg += `Total Cans Delivered: *${totalCansDelivered} Cans*\n`;
+    msg += `Total Empty Collected: *${totalEmptyCollected} Empty*\n`;
     msg += `Total Amount Collected: *₹${totalAmountCollected}*\n`;
     msg += `Today's Pending Dues: *₹${totalBendingToday}*\n`;
     msg += `Customers Served: ${todayRecords.length}\n`;
     msg += `--------------------------------\n`;
     msg += `Customer Breakdown:\n`;
     todayRecords.forEach(r => {
-      msg += `• *${r.name}*: ${r.cansDelivered} cans | Paid: ₹${r.amountCollected}`;
+      msg += `• *${r.name}*: ${r.cansDelivered} delivered | ${r.emptyCansReturned} empty | Paid: ₹${r.amountCollected}`;
       if (r.bendingToday > 0) msg += ` (Due: ₹${r.bendingToday})`;
       msg += `\n`;
     });
@@ -84,46 +86,56 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
       {/* Top Banner */}
-      <div className="p-1.5 rounded-3xl bg-ocean-500/10 ring-1 ring-ocean-300/60 shadow-bezel-outer mb-6">
-        <div className="rounded-2xl bg-gradient-to-br from-ocean-50 via-white to-sky-50 p-6 sm:p-7 bezel-core">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-ocean-100 text-ocean-900 border border-ocean-300 mb-2">
-                <CalendarCheck weight="fill" className="w-4 h-4 text-ocean-600" />
-                <span>Today's Live Delivery & Collection Report</span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
-                Today's Update
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
-                {todayDateFormatted} • {todayRecords.length} Customers logged
-              </p>
+      <div className="rounded-2xl bg-white border border-slate-200/90 shadow-sm p-5 sm:p-6 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-ocean-700 mb-1">
+              <CalendarCheck weight="bold" className="w-4 h-4 text-ocean-600" aria-hidden="true" />
+              <span>Daily Delivery & Collection Report</span>
             </div>
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
+              Today's Update
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              {todayDateFormatted} • {todayRecords.length} Customers logged
+            </p>
+          </div>
 
-            {/* Quick Stat Pill */}
-            <div className="flex items-center gap-4 bg-white/95 p-4 rounded-2xl border border-ocean-200/90 shadow-sm shrink-0">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Delivered Today
-                </p>
-                <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className="text-2xl font-black text-ocean-700 num-tabular">
-                    {totalCansDelivered}
-                  </span>
-                  <span className="text-xs font-semibold text-slate-500">Cans</span>
-                </div>
+          {/* Quick Stat Pills */}
+          <div className="flex flex-wrap items-center gap-3 bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 shrink-0">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Delivered
+              </p>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-xl sm:text-2xl font-black text-ocean-700 num-tabular">
+                  {totalCansDelivered}
+                </span>
+                <span className="text-xs font-semibold text-slate-500">Cans</span>
               </div>
-              <div className="h-8 w-px bg-slate-200"></div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Collected Today
-                </p>
-                <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className="text-xs font-bold text-emerald-600">₹</span>
-                  <span className="text-2xl font-black text-emerald-700 num-tabular">
-                    {totalAmountCollected.toLocaleString('en-IN')}
-                  </span>
-                </div>
+            </div>
+            <div className="h-7 w-px bg-slate-200"></div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Empty Collected
+              </p>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-xl sm:text-2xl font-black text-amber-700 num-tabular">
+                  {totalEmptyCollected}
+                </span>
+                <span className="text-xs font-semibold text-slate-500">Empty</span>
+              </div>
+            </div>
+            <div className="h-7 w-px bg-slate-200"></div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Cash Collected
+              </p>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-xs font-semibold text-slate-500">₹</span>
+                <span className="text-xl sm:text-2xl font-black text-emerald-700 num-tabular">
+                  {totalAmountCollected.toLocaleString('en-IN')}
+                </span>
               </div>
             </div>
           </div>
@@ -206,6 +218,7 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
                   <th className="py-3 px-4">#</th>
                   <th className="py-3 px-4">Customer Name</th>
                   <th className="py-3 px-4 text-center">No. of Cane Delivered</th>
+                  <th className="py-3 px-4 text-center">No. of Empty Collected</th>
                   <th className="py-3 px-4 text-center">Amount Per Can</th>
                   <th className="py-3 px-4 text-right">Amount Collected</th>
                   <th className="py-3 px-4 text-right">Today's Bending</th>
@@ -226,6 +239,15 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
                         {r.cansDelivered} Cans
                       </span>
                     </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-extrabold font-mono ${
+                        r.emptyCansReturned > 0 
+                          ? 'bg-amber-50 text-amber-800 border border-amber-200' 
+                          : 'bg-slate-50 text-slate-500 border border-slate-200'
+                      }`}>
+                        {r.emptyCansReturned} Empty
+                      </span>
+                    </td>
                     <td className="py-3 px-4 text-center font-mono text-slate-600">
                       ₹{r.rate}
                     </td>
@@ -234,9 +256,9 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
                     </td>
                     <td className="py-3 px-4 text-right font-mono">
                       {r.bendingToday > 0 ? (
-                        <span className="font-extrabold text-amber-600">₹{r.bendingToday}</span>
+                        <span className="font-extrabold text-amber-700">₹{r.bendingToday}</span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 font-sans font-semibold text-[11px]">
+                        <span className="inline-flex items-center gap-1 text-emerald-700 font-sans font-semibold text-[11px]">
                           <CheckCircle weight="fill" className="w-3.5 h-3.5" />
                           <span>Paid</span>
                         </span>
@@ -247,11 +269,14 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
               </tbody>
               <tfoot>
                 <tr className="bg-ocean-50/60 border-t-2 border-ocean-200 font-bold text-xs text-slate-900">
-                  <td colSpan="2" className="py-3.5 px-4 uppercase text-ocean-900 tracking-wider">
+                  <td colSpan="2" className="py-3.5 px-4 uppercase text-slate-800 tracking-wider font-extrabold">
                     Today's Grand Totals:
                   </td>
                   <td className="py-3.5 px-4 text-center font-mono font-black text-ocean-800 text-sm">
                     {totalCansDelivered} Cans
+                  </td>
+                  <td className="py-3.5 px-4 text-center font-mono font-black text-amber-800 text-sm">
+                    {totalEmptyCollected} Empty
                   </td>
                   <td className="py-3.5 px-4 text-center text-slate-400">-</td>
                   <td className="py-3.5 px-4 text-right font-mono font-black text-emerald-700 text-sm">

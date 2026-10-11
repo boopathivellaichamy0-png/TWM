@@ -77,9 +77,9 @@ export function Header({
       badge: `${todayDeliveredCans} cans`,
       badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300'
     },
-    {
+      {
       id: 'allDates',
-      label: "All Dates & Months",
+      label: 'On Date & Customer Details',
       icon: ClockCounterClockwise,
       badge: `${distinctDateCount} dates`,
       badgeColor: 'bg-slate-100 text-slate-800 border-slate-300'
@@ -181,89 +181,6 @@ export function Header({
             );
           })}
         </nav>
-      </div>
-
-      {/* DASHBOARD TWO-PART CARDS (Click to switch to dedicated view) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
-        {/* PART 1 CARD: Today's Update */}
-        <div 
-          onClick={() => setActiveTab('todayUpdate')}
-          className={`p-1 rounded-2xl border transition-all cursor-pointer shadow-bezel-outer hover:shadow-bezel-inner ${
-            activeTab === 'todayUpdate' 
-              ? 'bg-ocean-100/70 border-ocean-300 ring-2 ring-ocean-400/30' 
-              : 'bg-white border-slate-200 hover:border-ocean-300'
-          }`}
-        >
-          <div className="rounded-xl bg-white p-4 bezel-core flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-ocean-100 text-ocean-700 flex items-center justify-center shrink-0 shadow-sm">
-                <CalendarCheck weight="bold" className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-ocean-700">
-                    Today's Update
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-ocean-100 text-ocean-800">
-                    {todayDeliveredCount} Served
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-xl font-black text-slate-900 num-tabular">
-                    {todayDeliveredCans} Cans
-                  </span>
-                  <span className="text-xs font-extrabold text-emerald-700 num-tabular">
-                    • ₹{todayCollectedCash} Collected
-                  </span>
-                </div>
-                <p className="text-xs text-ocean-700 font-medium flex items-center gap-1 mt-1">
-                  <span>View customer names and amounts</span>
-                  <ArrowRight weight="bold" className="w-3.5 h-3.5" />
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* PART 2 CARD: Data of All Dates & Months */}
-        <div 
-          onClick={() => setActiveTab('allDates')}
-          className={`p-1 rounded-2xl border transition-all cursor-pointer shadow-bezel-outer hover:shadow-bezel-inner ${
-            activeTab === 'allDates' 
-              ? 'bg-amber-100/70 border-amber-300 ring-2 ring-amber-400/30' 
-              : 'bg-white border-slate-200 hover:border-amber-300'
-          }`}
-        >
-          <div className="rounded-xl bg-white p-4 bezel-core flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 shadow-sm">
-                <ClockCounterClockwise weight="bold" className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-amber-700">
-                    All Dates & Months
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900">
-                    {distinctDateCount} Days Logged
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-xl font-black text-slate-900 num-tabular">
-                    All Dates & Months
-                  </span>
-                  <span className="text-xs font-extrabold text-amber-700 num-tabular">
-                    • ₹{totalBendingAmount} Total Bending
-                  </span>
-                </div>
-                <p className="text-xs text-amber-700 font-medium flex items-center gap-1 mt-1">
-                  <span>View date-wise ledger and breakdown</span>
-                  <ArrowRight weight="bold" className="w-3.5 h-3.5" />
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </header>
   );
