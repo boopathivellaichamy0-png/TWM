@@ -7,7 +7,6 @@ import { BendingCustomers } from './components/BendingCustomers';
 import { TodaysUpdate } from './components/TodaysUpdate';
 import { AllDatesHistory } from './components/AllDatesHistory';
 import { DeliverySheetModal } from './components/DeliverySheetModal';
-import { DataSafetyModal } from './components/DataSafetyModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
 import { INITIAL_CUSTOMERS, DEFAULT_BUSINESS_INFO } from './data/initialData';
 import { 
@@ -46,7 +45,6 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('entries'); // entries | todayUpdate | allDates | bending | addCustomer
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [isDataSafetyModalOpen, setIsDataSafetyModalOpen] = useState(false);
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [isCloudConnected, setIsCloudConnected] = useState(Boolean(getStoredFirebaseConfig()));
   const [cloudConfigVersion, setCloudConfigVersion] = useState(0);
@@ -57,7 +55,6 @@ export default function App() {
 
   // 1. Process 1-click WhatsApp cloud invite links (#cloud=...) & Listen for real-time Firestore sync
   useEffect(() => {
-    // Check if staff member opened a 1-click cloud invite link
     if (window.location.hash.startsWith('#cloud=')) {
       try {
         const raw = decodeURIComponent(window.location.hash.replace('#cloud=', ''));
@@ -132,13 +129,12 @@ export default function App() {
         const snaps = raw ? JSON.parse(raw) : [];
         const lastTime = snaps[0]?.timestamp ? new Date(snaps[0].timestamp).getTime() : 0;
         
-        // Save new snapshot if 1 minute passed or if first snapshot
         if (Date.now() - lastTime > 60000 || snaps.length === 0) {
           const newSnap = {
             timestamp: new Date().toISOString(),
             customers
           };
-          const updatedSnaps = [newSnap, ...snaps.slice(0, 4)]; // Keep last 5 snapshots
+          const updatedSnaps = [newSnap, ...snaps.slice(0, 4)];
           localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(updatedSnaps));
         }
       }
@@ -157,21 +153,24 @@ export default function App() {
         }
       });
     } else {
-      setIsDataSafetyModalOpen(true);
+      alert("To install Tamilan Waters App on your mobile phone:\n\n• On Android (Chrome): Tap the three dots (⋮) at top-right and tap 'Install app' or 'Add to Home screen'.\n• On iPhone (Safari): Tap the Share button (⎙) at bottom and tap 'Add to Home Screen (+)'.\n\nThe app will install directly on your home screen!");
     }
   };
 
-  // Restore customer list from backup or snapshot
-  const handleRestoreCustomers = (restoredCustomers) => {
-    setCustomers(restoredCustomers);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(restoredCustomers));
-      if (isCloudConnected) {
-        pushCustomersToCloud(restoredCustomers);
+  // Delete a customer permanently
+  const handleDeleteCustomer = (customerId) => {
+    setCustomers(prev => {
+      const updated = prev.filter(c => c.id !== customerId);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        if (isCloudConnected) {
+          pushCustomersToCloud(updated);
+        }
+      } catch (e) {
+        console.error('Failed to update after deletion', e);
       }
-    } catch (e) {
-      console.error('Failed to persist restored customers', e);
-    }
+      return updated;
+    });
   };
 
   // Update a customer's entry
@@ -256,13 +255,12 @@ export default function App() {
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-[#f8fafc]">
-      {/* Top Header with Embedded Navigation, Cloud Sync, Data Safety and Install App triggers */}
+      {/* Top Header with Embedded Navigation, Cloud Sync and Install App triggers */}
       <Header
         customers={customers}
         onPrintRoute={() => setIsPrintModalOpen(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenDataSafety={() => setIsDataSafetyModalOpen(true)}
         onTriggerInstall={handleTriggerInstall}
         isInstallable={Boolean(deferredInstallPrompt)}
         isCloudConnected={isCloudConnected}
@@ -276,6 +274,7 @@ export default function App() {
             customers={customers}
             onUpdateEntry={handleUpdateEntry}
             onNavigateToAddCustomer={() => setActiveTab('addCustomer')}
+            onDeleteCustomer={handleDeleteCustomer}
             businessInfo={businessInfo}
           />
         )}
@@ -292,6 +291,7 @@ export default function App() {
           <AllDatesHistory
             customers={customers}
             onNavigateToEntries={() => setActiveTab('entries')}
+            onDeleteCustomer={handleDeleteCustomer}
           />
         )}
 
@@ -320,17 +320,6 @@ export default function App() {
         businessInfo={businessInfo}
       />
 
-      {/* Data Safety, Backup & App Installation Modal */}
-      <DataSafetyModal
-        isOpen={isDataSafetyModalOpen}
-        onClose={() => setIsDataSafetyModalOpen(false)}
-        customers={customers}
-        onRestoreCustomers={handleRestoreCustomers}
-        businessInfo={businessInfo}
-        deferredInstallPrompt={deferredInstallPrompt}
-        onTriggerInstall={handleTriggerInstall}
-      />
-
       {/* Multi-Mobile Cloud Sync Configuration Modal */}
       <CloudSyncModal
         isOpen={isCloudModalOpen}
@@ -357,13 +346,6 @@ export default function App() {
               className="text-ocean-700 hover:underline font-semibold"
             >
               {isCloudConnected ? '🟢 Cloud Synced' : '☁️ Connect Cloud'}
-            </button>
-            <span>•</span>
-            <button 
-              onClick={() => setIsDataSafetyModalOpen(true)}
-              className="text-ocean-700 hover:underline font-semibold"
-            >
-              Data Safety & Backup
             </button>
             <span>•</span>
             <button 

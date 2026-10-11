@@ -8,7 +8,6 @@ import {
   CalendarCheck,
   ClockCounterClockwise,
   ArrowRight,
-  ShieldCheck,
   DeviceMobile,
   Cloud,
   CloudCheck
@@ -19,7 +18,6 @@ export function Header({
   onPrintRoute, 
   activeTab, 
   setActiveTab,
-  onOpenDataSafety,
   onTriggerInstall,
   isInstallable,
   isCloudConnected,
@@ -171,16 +169,6 @@ export function Header({
           >
             <DeviceMobile weight="bold" className="w-4 h-4 text-ocean-600" />
             <span>Install App</span>
-          </button>
-
-          {/* Data Safety & Backup Button */}
-          <button
-            onClick={onOpenDataSafety}
-            className="tactile-btn inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white shadow-2xs hover:bg-slate-800 transition-colors"
-            title="Data Safety, Backup and Restore"
-          >
-            <ShieldCheck weight="bold" className="w-4 h-4 text-emerald-400" />
-            <span>Data Safety</span>
           </button>
 
           {/* Delivery Sheet Button */}

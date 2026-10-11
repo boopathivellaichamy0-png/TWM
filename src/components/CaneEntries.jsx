@@ -9,10 +9,10 @@ import {
   CalendarCheck, 
   MapPin, 
   Phone, 
-  ArrowCounterClockwise,
   CaretDown,
   CaretUp,
-  Drop
+  Drop,
+  Trash
 } from '@phosphor-icons/react';
 import confetti from 'canvas-confetti';
 
@@ -20,12 +20,14 @@ export function CaneEntries({
   customers, 
   onUpdateEntry, 
   onNavigateToAddCustomer,
+  onDeleteCustomer,
   businessInfo 
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all'); // all | delivered | pending-entry | bending
   const [savedFeedbacks, setSavedFeedbacks] = useState({}); // { [customerId]: boolean }
   const [expandedBendingIds, setExpandedBendingIds] = useState({}); // { [customerId]: boolean }
+  const [customerToDelete, setCustomerToDelete] = useState(null);
 
   const toggleBendingDetails = (customerId) => {
     setExpandedBendingIds(prev => ({
@@ -348,8 +350,8 @@ export function CaneEntries({
                       </div>
                     </div>
 
-                    {/* Status badge */}
-                    <div className="shrink-0 text-right">
+                    {/* Status badge and delete button */}
+                    <div className="shrink-0 flex items-center gap-2">
                       {totalOutstandingBending > 0 ? (
                         <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
@@ -365,6 +367,16 @@ export function CaneEntries({
                           <span>Advance: ₹{Math.abs(totalOutstandingBending)}</span>
                         </div>
                       )}
+
+                      {/* Delete Customer Button */}
+                      <button
+                        type="button"
+                        onClick={() => setCustomerToDelete(customer)}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/60 hover:border-rose-200 transition-colors"
+                        title={`Delete ${customer.name}`}
+                      >
+                        <Trash weight="bold" className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
@@ -695,6 +707,61 @@ export function CaneEntries({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Customer Delete Permission Confirmation Modal */}
+      {customerToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div 
+            className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 p-5 sm:p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash weight="bold" className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Delete Customer?
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Permission required to permanently delete
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1.5">
+              <p>
+                Are you sure you want to delete <strong className="text-slate-900 font-extrabold">{customerToDelete.name}</strong>?
+              </p>
+              <p className="text-[11px] text-rose-600 font-medium">
+                ⚠️ This will permanently remove this customer's profile, daily delivery records, empty cans log, and all pending balances.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setCustomerToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteCustomer) {
+                    onDeleteCustomer(customerToDelete.id);
+                  }
+                  setCustomerToDelete(null);
+                }}
+                className="tactile-btn px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors"
+              >
+                Yes, Delete Customer
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

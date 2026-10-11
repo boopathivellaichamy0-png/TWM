@@ -11,15 +11,17 @@ import {
   Phone,
   MapPin,
   ClockCounterClockwise,
-  ArrowRight
+  ArrowRight,
+  Trash
 } from '@phosphor-icons/react';
 
-export function AllDatesHistory({ customers, onNavigateToEntries }) {
+export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustomer }) {
   // Toggle between 'onDate' and 'customer' views
   const [viewMode, setViewMode] = useState('onDate'); // 'onDate' | 'customer'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [customerFilter, setCustomerFilter] = useState('all'); // 'all' | 'due' | 'active'
+  const [customerToDelete, setCustomerToDelete] = useState(null);
 
   // Extract all entries normalized across all customers
   const customerLedgers = useMemo(() => {
@@ -585,6 +587,16 @@ export function AllDatesHistory({ customers, onNavigateToEntries }) {
                             All Clear ✅
                           </span>
                         )}
+
+                        {/* Delete Customer Button */}
+                        <button
+                          type="button"
+                          onClick={() => setCustomerToDelete(customer)}
+                          className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/80 hover:border-rose-200 transition-colors ml-1"
+                          title={`Delete ${customer.name}`}
+                        >
+                          <Trash weight="bold" className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
 
@@ -694,6 +706,61 @@ export function AllDatesHistory({ customers, onNavigateToEntries }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Customer Delete Permission Confirmation Modal */}
+      {customerToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div 
+            className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 p-5 sm:p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash weight="bold" className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Delete Customer?
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Permission required to permanently delete
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1.5">
+              <p>
+                Are you sure you want to delete customer <strong className="text-slate-900 font-extrabold">{customerToDelete.name}</strong>?
+              </p>
+              <p className="text-[11px] text-rose-600 font-medium">
+                ⚠️ This will permanently remove this customer's profile, past deliveries, empty cans record, and pending balances.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setCustomerToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteCustomer) {
+                    onDeleteCustomer(customerToDelete.id);
+                  }
+                  setCustomerToDelete(null);
+                }}
+                className="tactile-btn px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors"
+              >
+                Yes, Delete Customer
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
