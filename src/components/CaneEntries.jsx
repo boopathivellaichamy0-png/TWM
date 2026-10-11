@@ -263,9 +263,9 @@ export function CaneEntries({
             <div className="w-16 h-16 rounded-2xl bg-ocean-50 text-ocean-600 mx-auto flex items-center justify-center mb-4 ring-1 ring-ocean-200 shadow-sm">
               <Drop weight="fill" className="w-8 h-8 text-ocean-600 animate-pulse" />
             </div>
-            <h3 className="text-lg font-extrabold text-slate-900">
+            <h2 className="text-lg font-extrabold text-slate-900">
               Welcome to Tamilan Waters!
-            </h3>
+            </h2>
             <p className="text-xs text-slate-500 mt-1.5 mb-6 leading-relaxed">
               Your site is completely fresh and ready. Add your first customer with their name, rate per can, and opening balance to start logging deliveries.
             </p>
@@ -284,7 +284,7 @@ export function CaneEntries({
             <div className="w-12 h-12 rounded-full bg-ocean-50 text-ocean-600 mx-auto flex items-center justify-center mb-3">
               <MagnifyingGlass weight="bold" className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">No Customers Found</h3>
+            <h2 className="text-base font-bold text-slate-900">No Customers Found</h2>
             <p className="text-xs text-slate-500 mt-1 mb-5">
               No customer matching "{searchQuery}". You can quickly add a new customer to Tamilan Waters.
             </p>

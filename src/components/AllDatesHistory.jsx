@@ -192,7 +192,7 @@ export function AllDatesHistory({ customers, onNavigateToEntries }) {
             <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 mx-auto flex items-center justify-center mb-3">
               <Calendar weight="bold" className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">No Records Found</h3>
+            <h2 className="text-base font-bold text-slate-900">No Records Found</h2>
             <p className="text-xs text-slate-500 mt-1 mb-5">
               No dates match your selected filter or search query.
             </p>

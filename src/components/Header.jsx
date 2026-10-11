@@ -212,10 +212,10 @@ export function Header({
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-ocean-900">
+                  <span className="text-xs font-bold text-ocean-700">
                     Today's Update
                   </span>
-                  <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-ocean-100 text-ocean-800">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-ocean-100 text-ocean-800">
                     {todayDeliveredCount} Served
                   </span>
                 </div>
@@ -223,13 +223,13 @@ export function Header({
                   <span className="text-xl font-black text-slate-900 num-tabular">
                     {todayDeliveredCans} Cans
                   </span>
-                  <span className="text-xs font-extrabold text-emerald-600 num-tabular">
+                  <span className="text-xs font-extrabold text-emerald-700 num-tabular">
                     • ₹{todayCollectedCash} Collected
                   </span>
                 </div>
-                <p className="text-[11px] text-ocean-700 font-medium flex items-center gap-1 mt-1">
-                  <span>View customer names & amounts</span>
-                  <ArrowRight weight="bold" className="w-3 h-3" />
+                <p className="text-xs text-ocean-700 font-medium flex items-center gap-1 mt-1">
+                  <span>View customer names and amounts</span>
+                  <ArrowRight weight="bold" className="w-3.5 h-3.5" />
                 </p>
               </div>
             </div>
@@ -252,24 +252,24 @@ export function Header({
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
-                    All Dates & Months Data
+                  <span className="text-xs font-bold text-amber-700">
+                    All Dates & Months
                   </span>
-                  <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900">
                     {distinctDateCount} Days Logged
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2 mt-0.5">
                   <span className="text-xl font-black text-slate-900 num-tabular">
-                    Historical Logs
+                    All Dates & Months
                   </span>
-                  <span className="text-xs font-extrabold text-amber-600 num-tabular">
+                  <span className="text-xs font-extrabold text-amber-700 num-tabular">
                     • ₹{totalBendingAmount} Total Bending
                   </span>
                 </div>
-                <p className="text-[11px] text-amber-800 font-medium flex items-center gap-1 mt-1">
-                  <span>View date-wise ledger & breakdown</span>
-                  <ArrowRight weight="bold" className="w-3 h-3" />
+                <p className="text-xs text-amber-700 font-medium flex items-center gap-1 mt-1">
+                  <span>View date-wise ledger and breakdown</span>
+                  <ArrowRight weight="bold" className="w-3.5 h-3.5" />
                 </p>
               </div>
             </div>

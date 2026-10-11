@@ -217,7 +217,7 @@ export default function App() {
             <span className="font-bold text-slate-800">Tamilan Waters</span>
             <span>• 20L Water Can Supply Management</span>
           </div>
-          <div className="text-slate-400 text-[11px]">
+          <div className="text-slate-500 text-xs">
             Designed with Taste Skill standards • Anti-slop Double-Bezel Architecture
           </div>
         </div>
