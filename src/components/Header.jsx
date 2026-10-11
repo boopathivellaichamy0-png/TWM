@@ -4,7 +4,6 @@ import {
   CurrencyInr, 
   WarningCircle, 
   Printer, 
-  ArrowClockwise, 
   UserPlus,
   CalendarCheck,
   ClockCounterClockwise,
@@ -14,7 +13,6 @@ import {
 export function Header({ 
   customers, 
   onPrintRoute, 
-  onResetData, 
   activeTab, 
   setActiveTab 
 }) {
@@ -134,20 +132,11 @@ export function Header({
         <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
           <button
             onClick={onPrintRoute}
-            className="tactile-btn inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 hover:text-slate-900"
+            className="tactile-btn inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 hover:text-slate-900"
             title="Print daily delivery and collection sheet"
           >
             <Printer weight="bold" className="w-3.5 h-3.5 text-ocean-600" />
             <span>Delivery Sheet</span>
-          </button>
-
-          <button
-            onClick={onResetData}
-            className="tactile-btn inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
-            title="Reset to default Tamilan Waters sample customers"
-          >
-            <ArrowClockwise weight="bold" className="w-3.5 h-3.5" />
-            <span>Reset</span>
           </button>
         </div>
       </div>

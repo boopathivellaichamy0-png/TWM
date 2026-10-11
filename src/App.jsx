@@ -153,7 +153,6 @@ export default function App() {
       <Header
         customers={customers}
         onPrintRoute={() => setIsPrintModalOpen(true)}
-        onResetData={handleResetData}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
       />
