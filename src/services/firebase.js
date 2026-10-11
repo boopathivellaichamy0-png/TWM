@@ -9,6 +9,18 @@ import {
 
 const CONFIG_STORAGE_KEY = 'tamilan_waters_firebase_config';
 
+// Built-in Default Firebase Project for Tamilan Waters
+// All devices automatically connect to this permanent cloud database out-of-the-box!
+export const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBhCi1xjV8c2A1Qveib9nV8kC2I9QMQMwQ",
+  authDomain: "tamilan-waters.firebaseapp.com",
+  projectId: "tamilan-waters",
+  storageBucket: "tamilan-waters.firebasestorage.app",
+  messagingSenderId: "483514485153",
+  appId: "1:483514485153:web:45a0c31e2738c03eece3e0",
+  measurementId: "G-88WN5S4CG4"
+};
+
 export function getStoredFirebaseConfig() {
   try {
     const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
@@ -21,7 +33,8 @@ export function getStoredFirebaseConfig() {
   } catch (e) {
     console.error('Error reading firebase config from storage', e);
   }
-  return null;
+  // Return the built-in permanent default project for all mobile phones
+  return DEFAULT_FIREBASE_CONFIG;
 }
 
 export function saveFirebaseConfig(config) {
@@ -41,7 +54,7 @@ export function clearFirebaseConfig() {
 let firestoreInstance = null;
 let currentApp = null;
 
-export function initializeFirebase(config) {
+export function initializeFirebase(config = DEFAULT_FIREBASE_CONFIG) {
   if (!config || !config.apiKey || !config.projectId) {
     return null;
   }
@@ -55,13 +68,13 @@ export function initializeFirebase(config) {
 
     firestoreInstance = getFirestore(currentApp);
 
-    // Enable offline persistence so it works offline on mobile
+    // Enable offline persistence so all deliveries work even without network
     try {
       enableIndexedDbPersistence(firestoreInstance).catch((err) => {
         if (err.code === 'failed-precondition') {
           // Multiple tabs open, persistence can only be enabled in one tab at a time.
         } else if (err.code === 'unimplemented') {
-          // The current browser does not support all of the features required to enable persistence
+          // Current browser does not support IndexedDB persistence
         }
       });
     } catch {
@@ -111,7 +124,7 @@ export function subscribeToLiveCustomers(onData, onError) {
 }
 
 /**
- * Push updated customer data to the cloud so all other phones update immediately
+ * Push updated customer data to the permanent cloud so all other phones update immediately
  */
 export async function pushCustomersToCloud(customers, deviceIdentifier = 'Mobile Device') {
   const config = getStoredFirebaseConfig();
@@ -130,7 +143,7 @@ export async function pushCustomersToCloud(customers, deviceIdentifier = 'Mobile
     }, { merge: true });
     return true;
   } catch (err) {
-    console.error('Failed to push to cloud:', err);
+    console.error('Failed to push to permanent cloud:', err);
     throw err;
   }
 }
