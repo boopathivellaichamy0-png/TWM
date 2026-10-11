@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
 import { CaneEntries } from './components/CaneEntries';
@@ -8,7 +8,15 @@ import { TodaysUpdate } from './components/TodaysUpdate';
 import { AllDatesHistory } from './components/AllDatesHistory';
 import { DeliverySheetModal } from './components/DeliverySheetModal';
 import { DataSafetyModal } from './components/DataSafetyModal';
+import { CloudSyncModal } from './components/CloudSyncModal';
 import { INITIAL_CUSTOMERS, DEFAULT_BUSINESS_INFO } from './data/initialData';
+import { 
+  getStoredFirebaseConfig, 
+  initializeFirebase, 
+  subscribeToLiveCustomers, 
+  pushCustomersToCloud,
+  saveFirebaseConfig
+} from './services/firebase';
 import { Drop } from '@phosphor-icons/react';
 
 const STORAGE_KEY = 'tamilan_waters_customers_live';
@@ -39,10 +47,63 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('entries'); // entries | todayUpdate | allDates | bending | addCustomer
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isDataSafetyModalOpen, setIsDataSafetyModalOpen] = useState(false);
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
+  const [isCloudConnected, setIsCloudConnected] = useState(Boolean(getStoredFirebaseConfig()));
+  const [cloudConfigVersion, setCloudConfigVersion] = useState(0);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
   const [businessInfo] = useState(DEFAULT_BUSINESS_INFO);
 
-  // Capture PWA installation prompt event
+  const isSyncingFromCloudRef = useRef(false);
+
+  // 1. Process 1-click WhatsApp cloud invite links (#cloud=...) & Listen for real-time Firestore sync
+  useEffect(() => {
+    // Check if staff member opened a 1-click cloud invite link
+    if (window.location.hash.startsWith('#cloud=')) {
+      try {
+        const raw = decodeURIComponent(window.location.hash.replace('#cloud=', ''));
+        const parsed = JSON.parse(raw);
+        if (parsed.apiKey && parsed.projectId) {
+          saveFirebaseConfig(parsed);
+          setIsCloudConnected(true);
+          setCloudConfigVersion(v => v + 1);
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      } catch (err) {
+        console.error('Failed to parse cloud invite from URL hash', err);
+      }
+    }
+
+    const config = getStoredFirebaseConfig();
+    if (!config) {
+      setIsCloudConnected(false);
+      return;
+    }
+
+    setIsCloudConnected(true);
+    initializeFirebase(config);
+
+    // Live subscription across all connected phones
+    const unsubscribe = subscribeToLiveCustomers((cloudCustomers) => {
+      if (cloudCustomers && Array.isArray(cloudCustomers)) {
+        isSyncingFromCloudRef.current = true;
+        setCustomers(cloudCustomers);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudCustomers));
+        } catch {
+          // ignore
+        }
+        setTimeout(() => {
+          isSyncingFromCloudRef.current = false;
+        }, 500);
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [cloudConfigVersion]);
+
+  // 2. Capture PWA installation prompt event
   useEffect(() => {
     const handleBeforeInstall = (e) => {
       e.preventDefault();
@@ -53,10 +114,17 @@ export default function App() {
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, []);
 
-  // Sync with localStorage & maintain rolling auto-recovery snapshots
+  // 3. Sync local changes to localStorage and Cloud Firestore
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(customers));
+
+      // Push to cloud if connected and not originating from an incoming cloud sync
+      if (isCloudConnected && !isSyncingFromCloudRef.current && customers.length >= 0) {
+        pushCustomersToCloud(customers).catch(() => {
+          // Will retry on next update or when online
+        });
+      }
 
       // Save rolling safety snapshot if customers exist
       if (customers && customers.length > 0) {
@@ -77,7 +145,7 @@ export default function App() {
     } catch (e) {
       console.error('Failed to save to localStorage', e);
     }
-  }, [customers]);
+  }, [customers, isCloudConnected]);
 
   // Trigger app installation prompt
   const handleTriggerInstall = () => {
@@ -89,7 +157,6 @@ export default function App() {
         }
       });
     } else {
-      // Open modal on install guide tab
       setIsDataSafetyModalOpen(true);
     }
   };
@@ -99,6 +166,9 @@ export default function App() {
     setCustomers(restoredCustomers);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(restoredCustomers));
+      if (isCloudConnected) {
+        pushCustomersToCloud(restoredCustomers);
+      }
     } catch (e) {
       console.error('Failed to persist restored customers', e);
     }
@@ -186,7 +256,7 @@ export default function App() {
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-[#f8fafc]">
-      {/* Top Header with Embedded Navigation, Data Safety and Install App triggers */}
+      {/* Top Header with Embedded Navigation, Cloud Sync, Data Safety and Install App triggers */}
       <Header
         customers={customers}
         onPrintRoute={() => setIsPrintModalOpen(true)}
@@ -195,6 +265,8 @@ export default function App() {
         onOpenDataSafety={() => setIsDataSafetyModalOpen(true)}
         onTriggerInstall={handleTriggerInstall}
         isInstallable={Boolean(deferredInstallPrompt)}
+        isCloudConnected={isCloudConnected}
+        onOpenCloudSync={() => setIsCloudModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -259,6 +331,18 @@ export default function App() {
         onTriggerInstall={handleTriggerInstall}
       />
 
+      {/* Multi-Mobile Cloud Sync Configuration Modal */}
+      <CloudSyncModal
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
+        cloudStatus={isCloudConnected}
+        onConfigUpdated={(cfg) => {
+          setIsCloudConnected(Boolean(cfg));
+          setCloudConfigVersion(v => v + 1);
+        }}
+        customers={customers}
+      />
+
       {/* Discreet Footer */}
       <footer className="py-6 border-t border-slate-200/80 bg-white/50 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -268,6 +352,13 @@ export default function App() {
             <span>• 20L Water Can Supply Management</span>
           </div>
           <div className="flex items-center gap-3 text-slate-500 text-xs">
+            <button 
+              onClick={() => setIsCloudModalOpen(true)}
+              className="text-ocean-700 hover:underline font-semibold"
+            >
+              {isCloudConnected ? '🟢 Cloud Synced' : '☁️ Connect Cloud'}
+            </button>
+            <span>•</span>
             <button 
               onClick={() => setIsDataSafetyModalOpen(true)}
               className="text-ocean-700 hover:underline font-semibold"

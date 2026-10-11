@@ -9,7 +9,9 @@ import {
   ClockCounterClockwise,
   ArrowRight,
   ShieldCheck,
-  DeviceMobile
+  DeviceMobile,
+  Cloud,
+  CloudCheck
 } from '@phosphor-icons/react';
 
 export function Header({ 
@@ -19,7 +21,9 @@ export function Header({
   setActiveTab,
   onOpenDataSafety,
   onTriggerInstall,
-  isInstallable
+  isInstallable,
+  isCloudConnected,
+  onOpenCloudSync
 }) {
   // Today's metrics
   const todayDeliveredCans = customers.reduce((sum, c) => sum + (c.todayEntry?.cansBought || 0), 0);
@@ -135,6 +139,30 @@ export function Header({
 
         {/* Quick action buttons on the right */}
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto shrink-0">
+          {/* Cloud Sync Status Button */}
+          <button
+            onClick={onOpenCloudSync}
+            className={`tactile-btn inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-colors shadow-2xs ${
+              isCloudConnected
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
+                : 'bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100'
+            }`}
+            title={isCloudConnected ? "Live multi-phone cloud sync active" : "Connect cloud database for multiple phones"}
+          >
+            {isCloudConnected ? (
+              <>
+                <CloudCheck weight="fill" className="w-4 h-4 text-emerald-600" />
+                <span className="hidden xs:inline">Cloud Synced</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              </>
+            ) : (
+              <>
+                <Cloud weight="bold" className="w-4 h-4 text-amber-600" />
+                <span>Connect Cloud</span>
+              </>
+            )}
+          </button>
+
           {/* Mobile Install App Button */}
           <button
             onClick={onTriggerInstall}
