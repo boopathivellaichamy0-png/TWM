@@ -36,18 +36,19 @@ export function CaneEntries({
     }));
   };
 
-  // Filtered customers based on search and selected filter chip
+  // Filtered customers based on search
+  // REQUIREMENT: "in cane entries there should not the detailes of all customers only the searched customer"
   const filteredCustomers = useMemo(() => {
-    let list = customers;
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter(c => 
-        c.name.toLowerCase().includes(q) ||
-        (c.phone && c.phone.includes(q)) ||
-        (c.address && c.address.toLowerCase().includes(q))
-      );
+    if (!searchQuery.trim()) {
+      return [];
     }
+
+    const q = searchQuery.toLowerCase().trim();
+    let list = customers.filter(c => 
+      c.name.toLowerCase().includes(q) ||
+      (c.phone && c.phone.includes(q)) ||
+      (c.address && c.address.toLowerCase().includes(q))
+    );
 
     if (activeFilter === 'delivered') {
       list = list.filter(c => (c.todayEntry?.cansBought || 0) > 0);
@@ -280,7 +281,57 @@ export function CaneEntries({
             </button>
           </div>
         </div>
+      ) : !searchQuery.trim() ? (
+        /* Prompt state when no customer has been searched yet */
+        <div className="p-1 rounded-3xl bg-white border border-slate-200/90 shadow-bezel-outer text-center py-12 px-4">
+          <div className="max-w-md mx-auto space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-ocean-50 text-ocean-600 mx-auto flex items-center justify-center ring-1 ring-ocean-200 shadow-sm">
+              <MagnifyingGlass weight="bold" className="w-7 h-7 text-ocean-600" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
+                Search Customer to View Details
+              </h2>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                Type customer name, phone number, or area in the search bar above to log cans delivered, empty cans returned, and payments.
+              </p>
+            </div>
+
+            {/* Quick Clickable Customer Name Tags */}
+            {customers.length > 0 && (
+              <div className="pt-2">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
+                  Or tap a customer name:
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-1.5 max-h-48 overflow-y-auto p-1 scrollbar-none">
+                  {customers.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setSearchQuery(c.name)}
+                      className="tactile-btn px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-ocean-50 hover:text-ocean-700 hover:border-ocean-300 border border-slate-200/80 text-xs font-semibold text-slate-700 transition-all shadow-2xs"
+                    >
+                      <span>{c.name}</span>
+                      {c.phone && <span className="ml-1 text-[10px] text-slate-400">({c.phone.slice(-4)})</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2">
+              <button
+                onClick={onNavigateToAddCustomer}
+                className="tactile-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 shadow-sm"
+              >
+                <Plus weight="bold" className="w-4 h-4 text-ocean-400" />
+                <span>Add New Customer</span>
+              </button>
+            </div>
+          </div>
+        </div>
       ) : filteredCustomers.length === 0 ? (
+        /* State when searched customer is not found */
         <div className="p-1 rounded-2xl bg-slate-100/70 ring-1 ring-slate-200/80 shadow-sm text-center py-14">
           <div className="rounded-xl bg-white p-8 max-w-md mx-auto bezel-core">
             <div className="w-12 h-12 rounded-full bg-ocean-50 text-ocean-600 mx-auto flex items-center justify-center mb-3">
