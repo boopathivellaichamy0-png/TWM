@@ -24,29 +24,15 @@ export function Header({
   onOpenCloudSync
 }) {
   // Today's metrics
-  const todayDeliveredCans = customers.reduce((sum, c) => sum + (c.todayEntry?.cansBought || 0), 0);
-  const todayCollectedCash = customers.reduce((sum, c) => sum + (c.todayEntry?.amountPaid || 0), 0);
+  const todayDeliveredCans = customers.reduce((sum, c) => sum + (c.todayCans ?? (c.todayEntry?.cansBought || 0)), 0);
+  const todayCollectedCash = customers.reduce((sum, c) => sum + (c.todayPaid ?? (c.todayEntry?.amountPaid || 0)), 0);
   
   // Total pending/bending across all customers
-  const totalBendingAmount = customers.reduce((sum, c) => {
-    const todayCans = c.todayEntry?.cansBought || 0;
-    const rate = c.amountPerCane || 0;
-    const todayPaid = c.todayEntry?.amountPaid || 0;
-    const todayBending = Math.max(0, (todayCans * rate) - todayPaid);
-    const prevBending = c.previousBendingAmount || 0;
-    return sum + todayBending + prevBending;
-  }, 0);
+  const totalBendingAmount = customers.reduce((sum, c) => sum + (c.totalOutstandingBending ?? 0), 0);
 
-  const bendingCount = customers.filter(c => {
-    const todayCans = c.todayEntry?.cansBought || 0;
-    const rate = c.amountPerCane || 0;
-    const todayPaid = c.todayEntry?.amountPaid || 0;
-    const todayBending = (todayCans * rate) - todayPaid;
-    const total = (c.previousBendingAmount || 0) + todayBending;
-    return total > 0;
-  }).length;
+  const bendingCount = customers.filter(c => (c.totalOutstandingBending ?? 0) > 0).length;
 
-  const todayDeliveredCount = customers.filter(c => (c.todayEntry?.cansBought || 0) > 0).length;
+  const todayDeliveredCount = customers.filter(c => (c.todayCans ?? (c.todayEntry?.cansBought || 0)) > 0).length;
 
   const todayDateFormatted = new Intl.DateTimeFormat('en-IN', {
     weekday: 'short',
@@ -59,6 +45,11 @@ export function Header({
   const distinctDateCount = useMemo(() => {
     const dates = new Set();
     customers.forEach(c => {
+      if (Array.isArray(c.entries)) {
+        c.entries.forEach(e => {
+          if (e.date) dates.add(e.date);
+        });
+      }
       if (c.todayEntry?.date) dates.add(c.todayEntry.date);
       if (Array.isArray(c.history)) {
         c.history.forEach(h => {

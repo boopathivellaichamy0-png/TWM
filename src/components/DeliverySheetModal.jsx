@@ -11,12 +11,12 @@ export function DeliverySheetModal({ isOpen, onClose, customers, businessInfo })
     year: 'numeric'
   });
 
-  const totalCansDelivered = customers.reduce((s, c) => s + (c.todayEntry?.cansBought || 0), 0);
-  const totalEmptyCollected = customers.reduce((s, c) => s + (c.todayEntry?.emptyCansReturned || 0), 0);
-  const totalAmountCollected = customers.reduce((s, c) => s + (c.todayEntry?.amountPaid || 0), 0);
+  const totalCansDelivered = customers.reduce((s, c) => s + (c.todayCans ?? (c.todayEntry?.cansBought || 0)), 0);
+  const totalEmptyCollected = customers.reduce((s, c) => s + (c.todayEmpty ?? (c.todayEntry?.emptyCansReturned || 0)), 0);
+  const totalAmountCollected = customers.reduce((s, c) => s + (c.todayPaid ?? (c.todayEntry?.amountPaid || 0)), 0);
   const totalBendingDues = customers.reduce((s, c) => {
-    const todayCost = (c.todayEntry?.cansBought || 0) * (c.amountPerCane || 0);
-    const todayPaid = c.todayEntry?.amountPaid || 0;
+    const todayCost = (c.todayCans ?? (c.todayEntry?.cansBought || 0)) * (c.amountPerCane || 35);
+    const todayPaid = c.todayPaid ?? (c.todayEntry?.amountPaid || 0);
     const todayBending = Math.max(0, todayCost - todayPaid);
     return s + todayBending + (c.previousBendingAmount || 0);
   }, 0);
@@ -93,9 +93,9 @@ export function DeliverySheetModal({ isOpen, onClose, customers, businessInfo })
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {customers.map((c, idx) => {
-                  const todayCans = c.todayEntry?.cansBought || 0;
+                  const todayCans = c.todayCans ?? (c.todayEntry?.cansBought || 0);
                   const rate = c.amountPerCane || 35;
-                  const todayPaid = c.todayEntry?.amountPaid || 0;
+                  const todayPaid = c.todayPaid ?? (c.todayEntry?.amountPaid || 0);
                   const todayBending = Math.max(0, (todayCans * rate) - todayPaid);
                   const totalBending = (c.previousBendingAmount || 0) + todayBending;
 
@@ -112,7 +112,7 @@ export function DeliverySheetModal({ isOpen, onClose, customers, businessInfo })
                         {todayCans}
                       </td>
                       <td className="py-2 px-2 text-center font-mono text-slate-600">
-                        {c.todayEntry?.emptyCansReturned || 0}
+                        {c.todayEmpty ?? (c.todayEntry?.emptyCansReturned || 0)}
                       </td>
                       <td className="py-2 px-2 text-right font-bold text-emerald-700 font-mono">
                         ₹{todayPaid}

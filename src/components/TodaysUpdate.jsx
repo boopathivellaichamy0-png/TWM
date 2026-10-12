@@ -9,11 +9,23 @@ import {
   WarningCircle, 
   Phone,
   WhatsappLogo,
-  ArrowRight
+  ArrowRight,
+  ClockCounterClockwise
 } from '@phosphor-icons/react';
+import { CustomerEntriesModal } from './CustomerEntriesModal';
+import { getTodayDateString } from '../utils/customerUtils';
 
-export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
+export function TodaysUpdate({ 
+  customers, 
+  onNavigateToEntries, 
+  onAddDeliveryEntry,
+  onDeleteEntry,
+  businessInfo 
+}) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCustomerForHistory, setSelectedCustomerForHistory] = useState(null);
+
+  const todayStr = getTodayDateString();
 
   const todayDateFormatted = new Intl.DateTimeFormat('en-IN', {
     weekday: 'long',
@@ -22,17 +34,20 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
     year: 'numeric'
   }).format(new Date());
 
-  // Customers with delivery or payment activity today
+  // Customers with delivery or payment activity today (accumulates all deliveries made today)
   const todayRecords = useMemo(() => {
     return customers.map(c => {
       const rate = c.amountPerCane || 35;
-      const cansDelivered = c.todayEntry?.cansBought || 0;
-      const amountCollected = c.todayEntry?.amountPaid || 0;
+      const cansDelivered = c.todayCans ?? (c.todayEntry?.cansBought || 0);
+      const emptyCansReturned = c.todayEmpty ?? (c.todayEntry?.emptyCansReturned || 0);
+      const amountCollected = c.todayPaid ?? (c.todayEntry?.amountPaid || 0);
       const totalCost = cansDelivered * rate;
       const bendingToday = Math.max(0, totalCost - amountCollected);
+      const todayEntries = (c.entries || []).filter(e => e.date === todayStr);
 
       return {
         id: c.id,
+        rawCustomer: c,
         name: c.name,
         phone: c.phone,
         address: c.address,
@@ -41,11 +56,12 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
         amountCollected,
         totalCost,
         bendingToday,
-        emptyCansReturned: c.todayEntry?.emptyCansReturned || 0,
+        emptyCansReturned,
+        deliveryCount: todayEntries.length > 0 ? todayEntries.length : (cansDelivered > 0 ? 1 : 0),
         isSaved: c.todayEntry?.saved
       };
-    }).filter(c => c.cansDelivered > 0 || c.amountCollected > 0);
-  }, [customers]);
+    }).filter(c => c.cansDelivered > 0 || c.amountCollected > 0 || c.emptyCansReturned > 0);
+  }, [customers, todayStr]);
 
   const filteredRecords = useMemo(() => {
     if (!searchQuery.trim()) return todayRecords;
@@ -73,7 +89,7 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
     msg += `--------------------------------\n`;
     msg += `Customer Breakdown:\n`;
     todayRecords.forEach(r => {
-      msg += `• *${r.name}*: ${r.cansDelivered} delivered | ${r.emptyCansReturned} empty | Paid: ₹${r.amountCollected}`;
+      msg += `• *${r.name}*: ${r.cansDelivered} delivered (${r.deliveryCount} deliveries) | ${r.emptyCansReturned} empty | Paid: ₹${r.amountCollected}`;
       if (r.bendingToday > 0) msg += ` (Due: ₹${r.bendingToday})`;
       msg += `\n`;
     });
@@ -97,7 +113,7 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
               Today's Update
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              {todayDateFormatted} • {todayRecords.length} Customers logged
+              {todayDateFormatted} • {todayRecords.length} Customers logged today
             </p>
           </div>
 
@@ -222,6 +238,7 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
                   <th className="py-3 px-4 text-center">Amount Per Can</th>
                   <th className="py-3 px-4 text-right">Amount Collected</th>
                   <th className="py-3 px-4 text-right">Today's Bending</th>
+                  <th className="py-3 px-4 text-center">History</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -235,9 +252,16 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-ocean-50 text-ocean-800 border border-ocean-200 font-mono">
-                        {r.cansDelivered} Cans
-                      </span>
+                      <div className="flex flex-col items-center">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-ocean-50 text-ocean-800 border border-ocean-200 font-mono">
+                          {r.cansDelivered} Cans
+                        </span>
+                        {r.deliveryCount > 1 && (
+                          <span className="text-[10px] text-ocean-700 font-semibold mt-0.5">
+                            ({r.deliveryCount} deliveries)
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-extrabold font-mono ${
@@ -264,6 +288,16 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
                         </span>
                       )}
                     </td>
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCustomerForHistory(r.rawCustomer)}
+                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 transition-colors"
+                        title="View All Entries for this customer"
+                      >
+                        <ClockCounterClockwise weight="bold" className="w-4 h-4 text-ocean-600" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -285,12 +319,33 @@ export function TodaysUpdate({ customers, onNavigateToEntries, businessInfo }) {
                   <td className="py-3.5 px-4 text-right font-mono font-black text-amber-700 text-sm">
                     ₹{totalBendingToday.toLocaleString('en-IN')}
                   </td>
+                  <td></td>
                 </tr>
               </tfoot>
             </table>
           </div>
         </div>
       )}
+
+      {/* View All Entries Modal */}
+      {(() => {
+        const modalCustomer = selectedCustomerForHistory 
+          ? (customers.find(c => c.id === selectedCustomerForHistory.id) || selectedCustomerForHistory)
+          : null;
+
+        if (!modalCustomer) return null;
+
+        return (
+          <CustomerEntriesModal
+            isOpen={Boolean(modalCustomer)}
+            onClose={() => setSelectedCustomerForHistory(null)}
+            customer={modalCustomer}
+            onAddEntry={onAddDeliveryEntry}
+            onDeleteEntry={onDeleteEntry}
+            businessInfo={businessInfo}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -59,6 +59,11 @@ export function AddCustomer({ onAddCustomer, onCancel }) {
 
     setIsSubmitting(true);
 
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    const openingDue = Number(formData.previousBendingAmount) || 0;
     const newCustomer = {
       id: `cust-${Date.now()}`,
       name: formData.name.trim(),
@@ -66,15 +71,16 @@ export function AddCustomer({ onAddCustomer, onCancel }) {
       phone: formData.phone.trim(),
       address: formData.address.trim(),
       emptyCansHeld: Number(formData.emptyCansHeld) || 0,
-      previousBendingAmount: Number(formData.previousBendingAmount) || 0,
+      openingBendingAmount: openingDue,
+      previousBendingAmount: openingDue,
+      entries: [],
       todayEntry: {
-        date: new Date().toISOString().split('T')[0],
-        cansBought: 1, // default 1 cane for today
-        emptyCansReturned: 1,
+        date: todayStr,
+        cansBought: 0,
+        emptyCansReturned: 0,
         amountPaid: 0,
-        notes: 'Newly added customer',
-        saved: true,
-        lastUpdated: new Date().toISOString(),
+        saved: false,
+        lastUpdated: now.toISOString(),
       },
       history: []
     };

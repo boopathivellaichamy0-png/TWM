@@ -8,34 +8,47 @@ import {
   CurrencyInr, 
   CheckCircle, 
   WarningCircle, 
-  Phone,
-  MapPin,
-  ClockCounterClockwise,
-  ArrowRight,
-  Trash
+  Phone, 
+  MapPin, 
+  ClockCounterClockwise, 
+  ArrowRight, 
+  Trash, 
+  Clock 
 } from '@phosphor-icons/react';
+import { CustomerEntriesModal } from './CustomerEntriesModal';
+import { 
+  formatDisplayDate, 
+  formatDisplayTime, 
+  getTodayDateString 
+} from '../utils/customerUtils';
 
-export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustomer }) {
+export function AllDatesHistory({ 
+  customers, 
+  onNavigateToEntries, 
+  onDeleteCustomer,
+  onAddDeliveryEntry,
+  onDeleteEntry,
+  businessInfo 
+}) {
   // Toggle between 'onDate' and 'customer' views
   const [viewMode, setViewMode] = useState('onDate'); // 'onDate' | 'customer'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [customerFilter, setCustomerFilter] = useState('all'); // 'all' | 'due' | 'active'
   const [customerToDelete, setCustomerToDelete] = useState(null);
+  const [selectedCustomerForEntries, setSelectedCustomerForEntries] = useState(null);
+
+  const todayStr = getTodayDateString();
 
   // Extract all entries normalized across all customers
   const customerLedgers = useMemo(() => {
     return customers.map(c => {
-      const rate = c.amountPerCane || 35;
-      const entries = [];
+      const rate = Number(c.amountPerCane) || 35;
+      const entries = Array.isArray(c.entries) ? [...c.entries] : [];
 
-      // 1. Today's entry if any activity exists
-      if (c.todayEntry && (
-        (c.todayEntry.cansBought || 0) > 0 || 
-        (c.todayEntry.emptyCansReturned || 0) > 0 || 
-        (c.todayEntry.amountPaid || 0) > 0
-      )) {
-        const d = c.todayEntry.date || new Date().toISOString().split('T')[0];
+      // Fallback if entries is empty
+      if (entries.length === 0 && c.todayEntry && ((c.todayEntry.cansBought || 0) > 0 || (c.todayEntry.amountPaid || 0) > 0)) {
+        const d = c.todayEntry.date || todayStr;
         const cans = c.todayEntry.cansBought || 0;
         const empty = c.todayEntry.emptyCansReturned || 0;
         const paid = c.todayEntry.amountPaid || 0;
@@ -45,59 +58,32 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
         entries.push({
           id: `${c.id}-today`,
           date: d,
-          isToday: true,
-          cans,
-          empty,
+          time: '10:00 AM',
+          timestamp: new Date().toISOString(),
+          cansDelivered: cans,
+          emptyCansReturned: empty,
           rate,
-          total,
-          paid,
-          bending
+          totalCost: total,
+          amountPaid: paid,
+          bendingAmount: bending
         });
       }
 
-      // 2. Past history entries
-      if (Array.isArray(c.history)) {
-        c.history.forEach((h, hIdx) => {
-          if (h && h.date) {
-            const hCans = h.cans != null ? h.cans : (h.cansBought || 0);
-            const hEmpty = h.emptyCansReturned != null 
-              ? h.emptyCansReturned 
-              : (h.emptyCans != null ? h.emptyCans : (h.empty || 0));
-            const hRate = h.rate || rate;
-            const hPaid = h.paid != null ? h.paid : (h.amountPaid || 0);
-            const hTotal = h.total != null ? h.total : (hCans * hRate);
-            const hBending = h.bending != null ? h.bending : Math.max(0, hTotal - hPaid);
+      // Sort entries descending
+      entries.sort((a, b) => {
+        const timeA = new Date(a.timestamp || `${a.date}T12:00:00`).getTime();
+        const timeB = new Date(b.timestamp || `${b.date}T12:00:00`).getTime();
+        return timeB - timeA;
+      });
 
-            entries.push({
-              id: `${c.id}-hist-${hIdx}`,
-              date: h.date,
-              isToday: false,
-              cans: hCans,
-              empty: hEmpty,
-              rate: hRate,
-              total: hTotal,
-              paid: hPaid,
-              bending: hBending
-            });
-          }
-        });
-      }
-
-      // Sort customer entries descending by date
-      entries.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-      const totalDelivered = entries.reduce((s, e) => s + e.cans, 0);
-      const totalEmpty = entries.reduce((s, e) => s + e.empty, 0);
-      const totalPaid = entries.reduce((s, e) => s + e.paid, 0);
-
-      // Current overall pending dues
-      const todayCans = c.todayEntry?.cansBought || 0;
-      const todayPaid = c.todayEntry?.amountPaid || 0;
-      const todayBending = Math.max(0, (todayCans * rate) - todayPaid);
-      const currentOutstandingDues = (c.previousBendingAmount || 0) + todayBending;
+      const totalDelivered = entries.reduce((s, e) => s + (Number(e.cansDelivered) || 0), 0);
+      const totalEmpty = entries.reduce((s, e) => s + (Number(e.emptyCansReturned) || 0), 0);
+      const totalPaid = entries.reduce((s, e) => s + (Number(e.amountPaid) || 0), 0);
+      const currentOutstandingDues = Number(c.totalOutstandingBending) || 0;
 
       return {
         id: c.id,
+        rawCustomer: c,
         name: c.name,
         phone: c.phone,
         address: c.address,
@@ -109,41 +95,45 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
         currentOutstandingDues
       };
     });
-  }, [customers]);
+  }, [customers, todayStr]);
 
-  // Aggregate by date for "On Date Details" mode
+  // Aggregate by date for "On Date Details" mode (lists each entry or groups by customer on that day)
   const allDateData = useMemo(() => {
     const dateMap = {};
 
     customerLedgers.forEach(c => {
       c.entries.forEach(entry => {
-        if (!dateMap[entry.date]) {
-          dateMap[entry.date] = {
-            date: entry.date,
-            isToday: entry.isToday,
+        const entryDate = entry.date || todayStr;
+        if (!dateMap[entryDate]) {
+          dateMap[entryDate] = {
+            date: entryDate,
+            isToday: entryDate === todayStr,
             records: []
           };
         }
-        dateMap[entry.date].records.push({
-          id: `${c.id}-${entry.id}`,
+        dateMap[entryDate].records.push({
+          id: entry.id || `${c.id}-${Math.random()}`,
           customerId: c.id,
+          rawCustomer: c.rawCustomer,
           name: c.name,
           phone: c.phone,
           address: c.address,
-          cans: entry.cans,
-          empty: entry.empty,
-          rate: entry.rate,
-          total: entry.total,
-          paid: entry.paid,
-          bending: entry.bending
+          time: entry.time || formatDisplayTime(null, entry.timestamp) || '',
+          timestamp: entry.timestamp,
+          cans: Number(entry.cansDelivered) || 0,
+          empty: Number(entry.emptyCansReturned) || 0,
+          rate: Number(entry.rate) || c.amountPerCane,
+          total: Number(entry.totalCost) || ((Number(entry.cansDelivered) || 0) * (Number(entry.rate) || c.amountPerCane)),
+          paid: Number(entry.amountPaid) || 0,
+          bending: Number(entry.bendingAmount) || 0
         });
       });
     });
 
     return Object.values(dateMap).sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [customerLedgers]);
+  }, [customerLedgers, todayStr]);
 
-  // Extract distinct months for On Date mode
+  // Extract distinct months
   const availableMonths = useMemo(() => {
     const set = new Set();
     allDateData.forEach(d => {
@@ -210,6 +200,12 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
     return list;
   }, [customerLedgers, customerFilter, searchQuery]);
 
+  // Active customer for modal
+  const activeModalCustomer = useMemo(() => {
+    if (!selectedCustomerForEntries) return null;
+    return customers.find(c => c.id === selectedCustomerForEntries.id) || selectedCustomerForEntries;
+  }, [customers, selectedCustomerForEntries]);
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5">
       {/* 1. Header with Mode Switcher */}
@@ -226,7 +222,7 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
             <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
               {viewMode === 'onDate' 
                 ? 'Daily breakdown of cans delivered, empty cans collected, cash collected, and pending dues by date.'
-                : 'Complete customer-by-customer ledger with cans delivered, empty collected, amount paid, and bending with date.'
+                : 'Complete customer-by-customer ledger with all date & time delivery and received details.'
               }
             </p>
           </div>
@@ -374,11 +370,7 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
           ) : (
             <div className="space-y-5">
               {filteredDates.map((dItem, dIdx) => {
-                const dateObj = new Date(dItem.date);
-                const formattedDisplayDate = !isNaN(dateObj.getTime())
-                  ? dateObj.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-                  : dItem.date;
-
+                const formattedDisplayDate = formatDisplayDate(dItem.date);
                 const dateCansTotal = dItem.records.reduce((s, r) => s + r.cans, 0);
                 const dateEmptyTotal = dItem.records.reduce((s, r) => s + r.empty, 0);
                 const datePaidTotal = dItem.records.reduce((s, r) => s + r.paid, 0);
@@ -408,7 +400,7 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
                               )}
                             </div>
                             <span className="text-[11px] text-slate-600 font-mono">
-                              {dItem.records.length} customer entries on this day
+                              {dItem.records.length} delivery entries on this date
                             </span>
                           </div>
                         </div>
@@ -432,25 +424,36 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
                         </div>
                       </div>
 
-                      {/* Entries Table for that day */}
+                      {/* Entries Table for that day with Time */}
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
                             <tr className="bg-slate-100/70 border-b border-slate-200 font-bold uppercase text-slate-600 text-[10px] tracking-wider">
-                              <th className="py-2.5 px-4">Customer Name</th>
+                              <th className="py-2.5 px-4">Customer Name & Time</th>
                               <th className="py-2.5 px-4 text-center">No. of Cane Delivered</th>
                               <th className="py-2.5 px-4 text-center">No. of Empty Collected</th>
                               <th className="py-2.5 px-4 text-center">Rate</th>
                               <th className="py-2.5 px-4 text-right">Amount Paid</th>
                               <th className="py-2.5 px-4 text-right">Bending Amount</th>
+                              <th className="py-2.5 px-4 text-center">Profile History</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {dItem.records.map((r, rIdx) => (
                               <tr key={rIdx} className="hover:bg-slate-50/70 transition-colors">
                                 <td className="py-2.5 px-4 font-bold text-slate-900">
-                                  {r.name}
-                                  {r.phone && <span className="block text-[10px] text-slate-500 font-mono">{r.phone}</span>}
+                                  <div>
+                                    <span>{r.name}</span>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-mono mt-0.5">
+                                      {r.time && (
+                                        <span className="flex items-center gap-0.5 text-ocean-700 font-semibold">
+                                          <Clock weight="bold" className="w-3 h-3 text-slate-400" />
+                                          <span>{r.time}</span>
+                                        </span>
+                                      )}
+                                      {r.phone && <span>• {r.phone}</span>}
+                                    </div>
+                                  </div>
                                 </td>
                                 <td className="py-2.5 px-4 text-center font-extrabold text-ocean-700 font-mono">
                                   {r.cans} Cans
@@ -477,6 +480,16 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
                                     <span className="text-emerald-700 font-sans font-semibold text-[11px]">Paid ✅</span>
                                   )}
                                 </td>
+                                <td className="py-2.5 px-4 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedCustomerForEntries(r.rawCustomer)}
+                                    className="p-1 rounded text-slate-400 hover:text-slate-800"
+                                    title="View All Entries"
+                                  >
+                                    <ClockCounterClockwise weight="bold" className="w-3.5 h-3.5 text-ocean-600" />
+                                  </button>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -498,6 +511,7 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
                               <td className="py-2.5 px-4 text-right font-mono font-black text-amber-800">
                                 {dateBendingTotal > 0 ? `₹${dateBendingTotal}` : '₹0 (All Clear)'}
                               </td>
+                              <td></td>
                             </tr>
                           </tfoot>
                         </table>
@@ -511,7 +525,7 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
         </div>
       )}
 
-      {/* 4. VIEW 2: CUSTOMER DETAILS */}
+      {/* 4. VIEW 2: CUSTOMER DETAILS (WITH "VIEW ALL ENTRIES" BUTTON ON EACH CUSTOMER) */}
       {viewMode === 'customer' && (
         <div>
           {filteredCustomerLedgers.length === 0 ? (
@@ -543,7 +557,7 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
                     {/* Customer Header Info */}
                     <div className="px-4 sm:px-5 py-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-extrabold text-base text-slate-900">
                             {customer.name}
                           </span>
@@ -567,20 +581,30 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
                         </div>
                       </div>
 
-                      {/* Customer Overall Metric Chips */}
+                      {/* Customer Overall Metric Chips & View All Entries Button */}
                       <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                        {/* FEATURE: VIEW ALL ENTRIES */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCustomerForEntries(customer.rawCustomer)}
+                          className="tactile-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 shadow-sm transition-all"
+                        >
+                          <ClockCounterClockwise weight="bold" className="w-3.5 h-3.5 text-ocean-400" />
+                          <span>View All Entries ({customer.entries.length})</span>
+                        </button>
+
                         <span className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 font-extrabold text-ocean-700 shadow-2xs">
-                          {customer.totalDelivered} Cans Total
+                          {customer.totalDelivered} Cans
                         </span>
                         <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 font-extrabold text-amber-800 shadow-2xs">
-                          {customer.totalEmpty} Empty Returned
+                          {customer.totalEmpty} Empty
                         </span>
                         <span className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 font-extrabold text-emerald-800 shadow-2xs">
                           ₹{customer.totalPaid} Paid
                         </span>
                         {customer.currentOutstandingDues > 0 ? (
                           <span className="px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 font-extrabold text-rose-800 shadow-2xs">
-                            ₹{customer.currentOutstandingDues} Bending Due
+                            ₹{customer.currentOutstandingDues} Due
                           </span>
                         ) : (
                           <span className="px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-300 font-extrabold text-emerald-800 shadow-2xs font-sans">
@@ -600,7 +624,7 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
                       </div>
                     </div>
 
-                    {/* Customer Date-By-Date Ledger Table */}
+                    {/* Customer Date-By-Date Ledger Table (Showing Date & Time) */}
                     {customer.entries.length === 0 ? (
                       <div className="p-6 text-center text-xs text-slate-500">
                         <span>No delivery or payment records logged yet for this customer.</span>
@@ -610,57 +634,62 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
                             <tr className="bg-slate-100/70 border-b border-slate-200 font-bold uppercase text-slate-600 text-[10px] tracking-wider">
-                              <th className="py-2.5 px-4">Date</th>
+                              <th className="py-2.5 px-4">Date & Time</th>
                               <th className="py-2.5 px-4 text-center">No. of Cane Delivered</th>
                               <th className="py-2.5 px-4 text-center">No. of Empty Collected</th>
-                              <th className="py-2.5 px-4 text-right">Amount Paid in Each Date</th>
-                              <th className="py-2.5 px-4 text-right">Bending Amount with Date</th>
+                              <th className="py-2.5 px-4 text-right">Amount Paid</th>
+                              <th className="py-2.5 px-4 text-right">Bending Amount</th>
                               <th className="py-2.5 px-4 text-center">Status</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {customer.entries.map((entry, eIdx) => {
-                              const dateObj = new Date(entry.date);
-                              const formattedDate = !isNaN(dateObj.getTime())
-                                ? dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                                : entry.date;
+                              const formattedDate = formatDisplayDate(entry.date);
+                              const formattedTime = formatDisplayTime(entry.time, entry.timestamp);
+                              const isToday = entry.date === todayStr;
 
                               return (
                                 <tr key={eIdx} className="hover:bg-slate-50/70 transition-colors">
-                                  <td className="py-2.5 px-4 font-mono font-bold text-slate-900">
-                                    <div className="flex items-center gap-2">
+                                  <td className="py-2.5 px-4 font-sans text-xs">
+                                    <div className="flex items-center gap-1.5 font-bold text-slate-900">
                                       <span>{formattedDate}</span>
-                                      {entry.isToday && (
+                                      {isToday && (
                                         <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-ocean-100 text-ocean-800 border border-ocean-200">
                                           Today
                                         </span>
                                       )}
                                     </div>
+                                    {formattedTime && (
+                                      <div className="flex items-center gap-1 text-[11px] text-slate-500 font-mono mt-0.5">
+                                        <Clock weight="bold" className="w-3 h-3 text-slate-400" />
+                                        <span>{formattedTime}</span>
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="py-2.5 px-4 text-center font-extrabold text-ocean-700 font-mono">
-                                    {entry.cans} Cans
+                                    {entry.cansDelivered} Cans
                                   </td>
                                   <td className="py-2.5 px-4 text-center font-mono">
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
-                                      entry.empty > 0 
+                                      entry.emptyCansReturned > 0 
                                         ? 'bg-amber-100 text-amber-800 border border-amber-200' 
                                         : 'bg-slate-100 text-slate-500'
                                     }`}>
-                                      {entry.empty} Empty
+                                      {entry.emptyCansReturned} Empty
                                     </span>
                                   </td>
                                   <td className="py-2.5 px-4 text-right font-extrabold text-emerald-700 font-mono text-xs">
-                                    ₹{entry.paid}
+                                    ₹{entry.amountPaid}
                                   </td>
                                   <td className="py-2.5 px-4 text-right font-mono">
-                                    {entry.bending > 0 ? (
-                                      <span className="font-extrabold text-amber-700">₹{entry.bending}</span>
+                                    {entry.bendingAmount > 0 ? (
+                                      <span className="font-extrabold text-amber-700">₹{entry.bendingAmount}</span>
                                     ) : (
                                       <span className="text-emerald-700 font-medium">₹0</span>
                                     )}
                                   </td>
                                   <td className="py-2.5 px-4 text-center">
-                                    {entry.bending <= 0 ? (
+                                    {entry.bendingAmount <= 0 ? (
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                         <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
                                         <span>Paid</span>
@@ -668,7 +697,7 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
                                     ) : (
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                                         <WarningCircle weight="fill" className="w-3 h-3 text-amber-600" />
-                                        <span>Due ₹{entry.bending}</span>
+                                        <span>Due ₹{entry.bendingAmount}</span>
                                       </span>
                                     )}
                                   </td>
@@ -707,6 +736,18 @@ export function AllDatesHistory({ customers, onNavigateToEntries, onDeleteCustom
             </div>
           )}
         </div>
+      )}
+
+      {/* Feature Modal: View All Entries */}
+      {activeModalCustomer && (
+        <CustomerEntriesModal
+          isOpen={Boolean(activeModalCustomer)}
+          onClose={() => setSelectedCustomerForEntries(null)}
+          customer={activeModalCustomer}
+          onAddEntry={onAddDeliveryEntry}
+          onDeleteEntry={onDeleteEntry}
+          businessInfo={businessInfo}
+        />
       )}
 
       {/* Customer Delete Permission Confirmation Modal */}

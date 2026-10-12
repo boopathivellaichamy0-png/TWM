@@ -8,17 +8,26 @@ import {
   HandCoins, 
   Phone, 
   MapPin, 
-  Calendar,
-  Drop,
-  CaretDown,
-  CaretUp,
-  ClockCounterClockwise
+  Calendar, 
+  Drop, 
+  CaretDown, 
+  CaretUp, 
+  ClockCounterClockwise,
+  Clock
 } from '@phosphor-icons/react';
 import confetti from 'canvas-confetti';
+import { CustomerEntriesModal } from './CustomerEntriesModal';
+import { 
+  formatDisplayDate, 
+  formatDisplayTime, 
+  getTodayDateString 
+} from '../utils/customerUtils';
 
 export function BendingCustomers({ 
   customers, 
   onRecordPayment, 
+  onAddDeliveryEntry,
+  onDeleteEntry,
   businessInfo,
   onNavigateToEntries 
 }) {
@@ -28,76 +37,96 @@ export function BendingCustomers({
   const [payingCustomerId, setPayingCustomerId] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [selectedCustomerForEntries, setSelectedCustomerForEntries] = useState(null);
+
+  const todayStr = getTodayDateString();
 
   // Compute pending details and all date-wise bending records for each customer
   const bendingCustomersList = useMemo(() => {
     return customers.map(c => {
-      const rate = c.amountPerCane || 35;
-      const todayCans = c.todayEntry?.cansBought || 0;
-      const todayPaid = c.todayEntry?.amountPaid || 0;
+      const rate = Number(c.amountPerCane) || 35;
+      const todayCans = c.todayCans ?? (c.todayEntry?.cansBought || 0);
+      const todayPaid = c.todayPaid ?? (c.todayEntry?.amountPaid || 0);
       const todayCost = todayCans * rate;
       const todayBending = Math.max(0, todayCost - todayPaid);
-      const prevBending = c.previousBendingAmount || 0;
-      const totalBending = prevBending + todayBending;
-      const entryDate = c.todayEntry?.date || new Date().toISOString().split('T')[0];
+      const prevBending = Number(c.previousBendingAmount || 0);
+      const totalBending = c.totalOutstandingBending ?? (prevBending + todayBending);
+      const entryDate = c.todayEntry?.date || todayStr;
 
-      // Build date-wise entries for ALL dates (Today + all past dates)
+      // Build date-wise entries for ALL dates (from c.entries or history)
       const allDateRecords = [];
 
-      // 1. Today's Record (if cans delivered or bending exists today)
-      if (todayCans > 0 || todayPaid > 0 || todayBending > 0) {
-        allDateRecords.push({
-          date: entryDate,
-          isToday: true,
-          cans: todayCans,
-          rate: rate,
-          total: todayCost,
-          paid: todayPaid,
-          bending: todayBending
-        });
-      }
-
-      // 2. Previous Dates from History
-      let historyBendingSum = 0;
-      if (Array.isArray(c.history) && c.history.length > 0) {
-        c.history.forEach(h => {
-          const hCans = h.cans || 0;
-          const hRate = h.rate || rate;
-          const hTotal = h.total != null ? h.total : (hCans * hRate);
-          const hPaid = h.paid || 0;
-          const hBending = h.bending != null ? h.bending : Math.max(0, hTotal - hPaid);
-          
-          historyBendingSum += hBending;
-
+      if (Array.isArray(c.entries) && c.entries.length > 0) {
+        c.entries.forEach(e => {
           allDateRecords.push({
-            date: h.date,
-            isToday: false,
-            cans: hCans,
-            rate: hRate,
-            total: hTotal,
-            paid: hPaid,
-            bending: hBending
+            id: e.id,
+            date: e.date,
+            time: e.time || formatDisplayTime(null, e.timestamp) || '',
+            isToday: e.date === todayStr,
+            cans: Number(e.cansDelivered) || 0,
+            rate: Number(e.rate) || rate,
+            total: Number(e.totalCost) || ((Number(e.cansDelivered) || 0) * rate),
+            paid: Number(e.amountPaid) || 0,
+            bending: Number(e.bendingAmount) || 0,
+            notes: e.notes || ''
           });
         });
+      } else {
+        // Fallback for legacy customers without entries array
+        if (todayCans > 0 || todayPaid > 0 || todayBending > 0) {
+          allDateRecords.push({
+            date: entryDate,
+            time: 'Today',
+            isToday: true,
+            cans: todayCans,
+            rate: rate,
+            total: todayCost,
+            paid: todayPaid,
+            bending: todayBending
+          });
+        }
+
+        if (Array.isArray(c.history)) {
+          c.history.forEach(h => {
+            const hCans = h.cans || 0;
+            const hRate = h.rate || rate;
+            const hTotal = h.total != null ? h.total : (hCans * hRate);
+            const hPaid = h.paid || 0;
+            const hBending = h.bending != null ? h.bending : Math.max(0, hTotal - hPaid);
+
+            allDateRecords.push({
+              date: h.date,
+              time: h.time || '',
+              isToday: false,
+              cans: hCans,
+              rate: hRate,
+              total: hTotal,
+              paid: hPaid,
+              bending: hBending
+            });
+          });
+        }
       }
 
-      // 3. Fallback for any legacy opening dues not covered by explicit history records
-      const unaccountedPrev = prevBending - historyBendingSum;
-      if (unaccountedPrev > 0 && allDateRecords.length <= 1) {
+      // Add opening registration balance if customer had initial dues
+      const openingBalance = Number(c.openingBendingAmount ?? (allDateRecords.length === 0 ? prevBending : 0));
+      if (openingBalance > 0) {
         allDateRecords.push({
-          date: 'Previous Balance',
+          date: 'Opening Balance',
+          time: '',
           isToday: false,
-          cans: Math.round(unaccountedPrev / rate) || 0,
+          cans: Math.round(openingBalance / rate) || 0,
           rate: rate,
-          total: unaccountedPrev,
+          total: openingBalance,
           paid: 0,
-          bending: unaccountedPrev,
+          bending: openingBalance,
           isOlderBalance: true
         });
       }
 
       return {
         ...c,
+        rawCustomer: c,
         todayCans,
         todayPaid,
         todayBending,
@@ -107,7 +136,7 @@ export function BendingCustomers({
         allDateRecords
       };
     }).filter(c => c.totalBending > 0);
-  }, [customers]);
+  }, [customers, todayStr]);
 
   // Total metrics
   const grandTotalBending = bendingCustomersList.reduce((sum, c) => sum + c.totalBending, 0);
@@ -174,8 +203,8 @@ export function BendingCustomers({
 
     customer.allDateRecords.forEach(r => {
       if (r.bending > 0) {
-        const dateDisplay = r.isToday ? 'Today' : r.date;
-        msg += `• ${dateDisplay}: ${r.cans} Cans | Due: ₹${r.bending}\n`;
+        const dateDisplay = r.isToday ? 'Today' : formatDisplayDate(r.date);
+        msg += `• ${dateDisplay} ${r.time ? `(${r.time})` : ''}: ${r.cans} Cans | Due: ₹${r.bending}\n`;
       }
     });
 
@@ -187,6 +216,11 @@ export function BendingCustomers({
 
     return encodeURIComponent(msg);
   };
+
+  const activeModalCustomer = useMemo(() => {
+    if (!selectedCustomerForEntries) return null;
+    return customers.find(c => c.id === selectedCustomerForEntries.id) || selectedCustomerForEntries;
+  }, [customers, selectedCustomerForEntries]);
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
@@ -310,7 +344,7 @@ export function BendingCustomers({
                 className="p-1 rounded-2xl bg-white border border-slate-200/90 shadow-bezel-outer hover:shadow-bezel-inner transition-all duration-300"
               >
                 <div className="rounded-xl bg-white bezel-core overflow-hidden">
-                  {/* CLEAN CARD ROW (JUST CUSTOMER NAME & BENDING AMOUNT) */}
+                  {/* CLEAN CARD ROW */}
                   <div
                     onClick={() => toggleExpand(customer.id)}
                     className="p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/60 transition-colors select-none"
@@ -321,9 +355,11 @@ export function BendingCustomers({
                         {customer.name.charAt(0)}
                       </div>
                       <div className="min-w-0">
-                        <h3 className="text-base font-bold text-slate-900 truncate">
-                          {customer.name}
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-base font-bold text-slate-900 truncate">
+                            {customer.name}
+                          </h3>
+                        </div>
                         {customer.phone && (
                           <p className="text-xs text-slate-400 font-mono">
                             {customer.phone}
@@ -334,6 +370,19 @@ export function BendingCustomers({
 
                     {/* Bending Amount & Expand Caret */}
                     <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCustomerForEntries(customer.rawCustomer);
+                        }}
+                        className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+                        title="View All Entries"
+                      >
+                        <ClockCounterClockwise weight="bold" className="w-3.5 h-3.5 text-ocean-600" />
+                        <span>All Entries ({customer.entries?.length || 0})</span>
+                      </button>
+
                       <div className="text-right">
                         <span className="text-[10px] uppercase font-bold text-slate-400 block">
                           Bending Amount
@@ -356,7 +405,7 @@ export function BendingCustomers({
                     </div>
                   </div>
 
-                  {/* EXPANDED DETAILS: DATE-WISE PREVIOUS BENDING AMOUNT OF ALL DATES */}
+                  {/* EXPANDED DETAILS */}
                   {isExpanded && (
                     <div className="px-4 sm:px-5 pb-5 pt-3 border-t border-slate-100 space-y-4 bg-slate-50/50">
                       {/* Subheader info bar */}
@@ -365,9 +414,18 @@ export function BendingCustomers({
                           <ClockCounterClockwise weight="bold" className="w-4 h-4 text-ocean-600" />
                           <span>Previous Bending Records of All Dates</span>
                         </div>
-                        <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 font-mono text-[11px]">
-                          Rate: ₹{customer.amountPerCane}/can
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCustomerForEntries(customer.rawCustomer)}
+                            className="text-xs font-bold text-ocean-700 hover:underline flex items-center gap-1"
+                          >
+                            <span>Open Full Profile History</span>
+                          </button>
+                          <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 font-mono text-[11px]">
+                            Rate: ₹{customer.amountPerCane}/can
+                          </span>
+                        </div>
                       </div>
 
                       {/* DATE-WISE PREVIOUS BENDING LEDGER TABLE */}
@@ -375,7 +433,7 @@ export function BendingCustomers({
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
                             <tr className="bg-slate-100/80 border-b border-slate-200 font-bold uppercase text-slate-600 text-[10px] tracking-wider">
-                              <th className="py-2.5 px-3">Date</th>
+                              <th className="py-2.5 px-3">Date & Time</th>
                               <th className="py-2.5 px-2.5 text-center">No. of Cane</th>
                               <th className="py-2.5 px-2.5 text-center">Rate</th>
                               <th className="py-2.5 px-2.5 text-right">Total Cost</th>
@@ -387,21 +445,24 @@ export function BendingCustomers({
                             {customer.allDateRecords.map((rec, idx) => {
                               const isToday = rec.isToday;
                               const displayDate = isToday 
-                                ? `${new Date(rec.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} (Today)`
-                                : (rec.isOlderBalance ? 'Past Balance' : new Date(rec.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
+                                ? `${formatDisplayDate(rec.date)} (Today)`
+                                : (rec.isOlderBalance ? 'Past Balance' : formatDisplayDate(rec.date));
 
                               return (
                                 <tr 
                                   key={idx}
                                   className={`hover:bg-slate-50/80 ${isToday ? 'bg-ocean-50/30 font-semibold' : ''}`}
                                 >
-                                  {/* Date */}
+                                  {/* Date & Time */}
                                   <td className="py-2.5 px-3 font-sans text-xs font-bold text-slate-900">
                                     <div className="flex items-center gap-1.5">
                                       {isToday && (
                                         <span className="w-2 h-2 rounded-full bg-ocean-500 animate-pulse"></span>
                                       )}
                                       <span>{displayDate}</span>
+                                      {rec.time && (
+                                        <span className="text-[10px] text-slate-400 font-mono">({rec.time})</span>
+                                      )}
                                     </div>
                                   </td>
 
@@ -434,7 +495,7 @@ export function BendingCustomers({
                             })}
                           </tbody>
 
-                          {/* TOTALS OF ALL DATES */}
+                          {/* TOTALS */}
                           <tfoot>
                             <tr className="bg-amber-50/70 border-t-2 border-amber-200 text-xs font-bold text-slate-900">
                               <td className="py-3 px-3 uppercase text-amber-900 font-sans tracking-wide">
@@ -451,7 +512,7 @@ export function BendingCustomers({
                                 ₹{totalPaidAllDates}
                               </td>
                               <td className="py-3 px-3 text-right text-amber-700 font-mono font-black text-sm">
-                                ₹{totalBendingAllDates || customer.totalBending}
+                                ₹{customer.totalBending}
                               </td>
                             </tr>
                           </tfoot>
@@ -554,6 +615,18 @@ export function BendingCustomers({
             );
           })}
         </div>
+      )}
+
+      {/* Feature Modal: View All Entries */}
+      {activeModalCustomer && (
+        <CustomerEntriesModal
+          isOpen={Boolean(activeModalCustomer)}
+          onClose={() => setSelectedCustomerForEntries(null)}
+          customer={activeModalCustomer}
+          onAddEntry={onAddDeliveryEntry}
+          onDeleteEntry={onDeleteEntry}
+          businessInfo={businessInfo}
+        />
       )}
     </div>
   );

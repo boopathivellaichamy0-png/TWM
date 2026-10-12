@@ -15,6 +15,11 @@ import {
   pushCustomersToCloud,
   saveFirebaseConfig
 } from './services/firebase';
+import { 
+  normalizeCustomer, 
+  getTodayDateString, 
+  getCurrentTimeString 
+} from './utils/customerUtils';
 import { Drop } from '@phosphor-icons/react';
 
 const STORAGE_KEY = 'tamilan_waters_customers_live';
@@ -34,12 +39,15 @@ export default function App() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map(c => normalizeCustomer(c));
+        }
       }
     } catch (e) {
       console.error('Failed to load from localStorage', e);
     }
-    return INITIAL_CUSTOMERS; // []
+    return INITIAL_CUSTOMERS;
   });
 
   const [activeTab, setActiveTab] = useState('entries'); // entries | todayUpdate | allDates | bending | addCustomer
@@ -82,9 +90,10 @@ export default function App() {
     const unsubscribe = subscribeToLiveCustomers((cloudCustomers) => {
       if (cloudCustomers && Array.isArray(cloudCustomers)) {
         isSyncingFromCloudRef.current = true;
-        setCustomers(cloudCustomers);
+        const normalized = cloudCustomers.map(c => normalizeCustomer(c));
+        setCustomers(normalized);
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudCustomers));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
         } catch {
           // ignore
         }
@@ -172,17 +181,75 @@ export default function App() {
     });
   };
 
-  // Update a customer's entry
+  // Add a new delivery entry to a customer (supports multiple deliveries per day with exact date & time)
+  const handleAddDeliveryEntry = (customerId, entryData) => {
+    setCustomers(prev => prev.map(c => {
+      if (c.id === customerId) {
+        const norm = normalizeCustomer(c);
+        const now = new Date();
+        const todayStr = getTodayDateString();
+        const entryDate = entryData.date || todayStr;
+        const timeStr = entryData.time || getCurrentTimeString();
+        const rate = Number(entryData.rate) || norm.amountPerCane || 35;
+        const cans = Number(entryData.cansDelivered) || 0;
+        const empty = Number(entryData.emptyCansReturned) || 0;
+        const paid = Number(entryData.amountPaid) || 0;
+        const totalCost = cans * rate;
+        const bendingAmount = cans > 0 ? (totalCost - paid) : -paid;
+
+        const newEntry = {
+          id: `ent-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          date: entryDate,
+          time: timeStr,
+          timestamp: entryDate === todayStr ? now.toISOString() : new Date(`${entryDate}T12:00:00`).toISOString(),
+          cansDelivered: cans,
+          emptyCansReturned: empty,
+          rate: rate,
+          totalCost: totalCost,
+          amountPaid: paid,
+          bendingAmount: bendingAmount,
+          notes: entryData.notes || '',
+          type: cans > 0 ? 'delivery' : 'payment'
+        };
+
+        const updatedEntries = [newEntry, ...(norm.entries || [])];
+
+        return normalizeCustomer({
+          ...norm,
+          entries: updatedEntries
+        });
+      }
+      return c;
+    }));
+  };
+
+  // Delete an individual delivery entry
+  const handleDeleteEntry = (customerId, entryId) => {
+    setCustomers(prev => prev.map(c => {
+      if (c.id === customerId) {
+        const norm = normalizeCustomer(c);
+        const updatedEntries = (norm.entries || []).filter(e => e.id !== entryId);
+
+        return normalizeCustomer({
+          ...norm,
+          entries: updatedEntries
+        });
+      }
+      return c;
+    }));
+  };
+
+  // Update a customer's today entry draft (backward-compatible)
   const handleUpdateEntry = (customerId, updates) => {
     setCustomers(prev => prev.map(c => {
       if (c.id === customerId) {
-        return {
+        return normalizeCustomer({
           ...c,
           todayEntry: {
             ...c.todayEntry,
             ...updates
           }
-        };
+        });
       }
       return c;
     }));
@@ -190,63 +257,40 @@ export default function App() {
 
   // Add new customer
   const handleAddCustomer = (newCustomer) => {
-    setCustomers(prev => [newCustomer, ...prev]);
+    const normalized = normalizeCustomer(newCustomer);
+    setCustomers(prev => [normalized, ...prev]);
     setActiveTab('entries');
   };
 
-  // Record payment in BendingCustomers tab
+  // Record payment in BendingCustomers tab (or CustomerEntriesModal)
   const handleRecordPayment = (customerId, amount, method) => {
     setCustomers(prev => prev.map(c => {
       if (c.id === customerId) {
-        let remainingPayment = amount;
-        
-        // 1. First pay off today's unpaid bill if any
-        const todayCans = c.todayEntry?.cansBought || 0;
-        const rate = c.amountPerCane || 35;
-        const currentTodayPaid = c.todayEntry?.amountPaid || 0;
-        const todayCost = todayCans * rate;
-        const todayUnpaid = Math.max(0, todayCost - currentTodayPaid);
+        const norm = normalizeCustomer(c);
+        const now = new Date();
+        const todayStr = getTodayDateString();
+        const timeStr = getCurrentTimeString();
+        const payAmount = Number(amount) || 0;
 
-        let newTodayPaid = currentTodayPaid;
-        let newPrevBending = c.previousBendingAmount || 0;
-
-        if (todayUnpaid > 0) {
-          const payToToday = Math.min(remainingPayment, todayUnpaid);
-          newTodayPaid += payToToday;
-          remainingPayment -= payToToday;
-        }
-
-        // 2. Any leftover goes to pay off previous dues
-        if (remainingPayment > 0 && newPrevBending > 0) {
-          const payToPrev = Math.min(remainingPayment, newPrevBending);
-          newPrevBending -= payToPrev;
-          remainingPayment -= payToPrev;
-        }
-
-        // If even more was paid, credit as negative previous balance
-        if (remainingPayment > 0) {
-          newPrevBending -= remainingPayment;
-        }
-
-        return {
-          ...c,
-          previousBendingAmount: newPrevBending,
-          todayEntry: {
-            ...c.todayEntry,
-            amountPaid: newTodayPaid,
-            saved: true,
-            lastUpdated: new Date().toISOString()
-          },
-          history: [
-            {
-              date: new Date().toISOString().split('T')[0],
-              amountPaid: amount,
-              method,
-              timestamp: new Date().toISOString()
-            },
-            ...(c.history || [])
-          ]
+        const paymentEntry = {
+          id: `pay-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          date: todayStr,
+          time: timeStr,
+          timestamp: now.toISOString(),
+          cansDelivered: 0,
+          emptyCansReturned: 0,
+          rate: norm.amountPerCane || 35,
+          totalCost: 0,
+          amountPaid: payAmount,
+          bendingAmount: -payAmount,
+          notes: `Paid via ${method || 'Cash'}`,
+          type: 'payment'
         };
+
+        return normalizeCustomer({
+          ...norm,
+          entries: [paymentEntry, ...(norm.entries || [])]
+        });
       }
       return c;
     }));
@@ -273,6 +317,8 @@ export default function App() {
             <CaneEntries
               customers={customers}
               onUpdateEntry={handleUpdateEntry}
+              onAddDeliveryEntry={handleAddDeliveryEntry}
+              onDeleteEntry={handleDeleteEntry}
               onNavigateToAddCustomer={() => setActiveTab('addCustomer')}
               onDeleteCustomer={handleDeleteCustomer}
               businessInfo={businessInfo}
@@ -283,6 +329,8 @@ export default function App() {
             <TodaysUpdate
               customers={customers}
               onNavigateToEntries={() => setActiveTab('entries')}
+              onAddDeliveryEntry={handleAddDeliveryEntry}
+              onDeleteEntry={handleDeleteEntry}
               businessInfo={businessInfo}
             />
           )}
@@ -292,6 +340,9 @@ export default function App() {
               customers={customers}
               onNavigateToEntries={() => setActiveTab('entries')}
               onDeleteCustomer={handleDeleteCustomer}
+              onAddDeliveryEntry={handleAddDeliveryEntry}
+              onDeleteEntry={handleDeleteEntry}
+              businessInfo={businessInfo}
             />
           )}
 
@@ -306,6 +357,8 @@ export default function App() {
             <BendingCustomers
               customers={customers}
               onRecordPayment={handleRecordPayment}
+              onAddDeliveryEntry={handleAddDeliveryEntry}
+              onDeleteEntry={handleDeleteEntry}
               businessInfo={businessInfo}
               onNavigateToEntries={() => setActiveTab('entries')}
             />

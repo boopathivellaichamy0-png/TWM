@@ -12,13 +12,24 @@ import {
   CaretDown,
   CaretUp,
   Drop,
-  Trash
+  Trash,
+  ClockCounterClockwise,
+  ListBullets,
+  Clock
 } from '@phosphor-icons/react';
 import confetti from 'canvas-confetti';
+import { CustomerEntriesModal } from './CustomerEntriesModal';
+import { 
+  formatDisplayDate, 
+  formatDisplayTime, 
+  getTodayDateString 
+} from '../utils/customerUtils';
 
 export function CaneEntries({ 
   customers, 
   onUpdateEntry, 
+  onAddDeliveryEntry,
+  onDeleteEntry,
   onNavigateToAddCustomer,
   onDeleteCustomer,
   businessInfo 
@@ -27,7 +38,41 @@ export function CaneEntries({
   const [activeFilter, setActiveFilter] = useState('all'); // all | delivered | pending-entry | bending
   const [savedFeedbacks, setSavedFeedbacks] = useState({}); // { [customerId]: boolean }
   const [expandedBendingIds, setExpandedBendingIds] = useState({}); // { [customerId]: boolean }
+  const [expandedTodayLogIds, setExpandedTodayLogIds] = useState({}); // { [customerId]: boolean }
   const [customerToDelete, setCustomerToDelete] = useState(null);
+  
+  // Selected customer for "View All Entries" modal
+  const [selectedCustomerForHistory, setSelectedCustomerForHistory] = useState(null);
+
+  // Form drafts for new deliveries per customer: { [customerId]: { cans: number, empty: number, paid: number } }
+  const [draftEntries, setDraftEntries] = useState({});
+
+  const todayStr = getTodayDateString();
+
+  // Helper to get or init draft values
+  const getDraft = (customerId, rate = 35) => {
+    if (draftEntries[customerId]) {
+      return draftEntries[customerId];
+    }
+    return {
+      cans: 1,
+      empty: 1,
+      paid: ''
+    };
+  };
+
+  const updateDraft = (customerId, updates) => {
+    setDraftEntries(prev => {
+      const current = prev[customerId] || { cans: 1, empty: 1, paid: '' };
+      return {
+        ...prev,
+        [customerId]: {
+          ...current,
+          ...updates
+        }
+      };
+    });
+  };
 
   const toggleBendingDetails = (customerId) => {
     setExpandedBendingIds(prev => ({
@@ -36,8 +81,14 @@ export function CaneEntries({
     }));
   };
 
-  // Filtered customers based on search
-  // REQUIREMENT: "in cane entries there should not the detailes of all customers only the searched customer"
+  const toggleTodayLog = (customerId) => {
+    setExpandedTodayLogIds(prev => ({
+      ...prev,
+      [customerId]: !prev[customerId]
+    }));
+  };
+
+  // Filtered customers based on search query
   const filteredCustomers = useMemo(() => {
     if (!searchQuery.trim()) {
       return [];
@@ -51,109 +102,99 @@ export function CaneEntries({
     );
 
     if (activeFilter === 'delivered') {
-      list = list.filter(c => (c.todayEntry?.cansBought || 0) > 0);
+      list = list.filter(c => (c.todayCans || c.todayEntry?.cansBought || 0) > 0);
     } else if (activeFilter === 'pending-entry') {
-      list = list.filter(c => !c.todayEntry?.saved || (c.todayEntry?.cansBought || 0) === 0);
+      list = list.filter(c => !c.todayEntry?.saved || (c.todayCans || c.todayEntry?.cansBought || 0) === 0);
     } else if (activeFilter === 'bending') {
-      list = list.filter(c => {
-        const todayCans = c.todayEntry?.cansBought || 0;
-        const rate = c.amountPerCane || 0;
-        const todayPaid = c.todayEntry?.amountPaid || 0;
-        const todayBending = (todayCans * rate) - todayPaid;
-        const totalBending = (c.previousBendingAmount || 0) + todayBending;
-        return totalBending > 0;
-      });
+      list = list.filter(c => (c.totalOutstandingBending || 0) > 0);
     }
 
     return list;
   }, [customers, searchQuery, activeFilter]);
 
-  // Handle local state updates for cans delivered
+  // Handle draft changes for cans delivered
   const handleCansChange = (customerId, newCans) => {
     const val = Math.max(0, parseInt(newCans, 10) || 0);
-    onUpdateEntry(customerId, {
-      cansBought: val,
-      saved: false
-    });
+    updateDraft(customerId, { cans: val });
   };
 
   const handleQuickAddCans = (customerId, delta) => {
-    const customer = customers.find(c => c.id === customerId);
-    if (!customer) return;
-    const current = customer.todayEntry?.cansBought || 0;
+    const current = getDraft(customerId).cans;
     handleCansChange(customerId, current + delta);
   };
 
   // Handle empty cans returned
-  const handleEmptyCansValueChange = (customerId, newEmptyVal) => {
-    const nextVal = Math.max(0, parseInt(newEmptyVal, 10) || 0);
-    onUpdateEntry(customerId, {
-      emptyCansReturned: nextVal,
-      saved: false
-    });
+  const handleEmptyCansChange = (customerId, newEmpty) => {
+    const val = Math.max(0, parseInt(newEmpty, 10) || 0);
+    updateDraft(customerId, { empty: val });
   };
 
-  const handleQuickAddEmptyCans = (customerId, delta) => {
-    const customer = customers.find(c => c.id === customerId);
-    if (!customer) return;
-    const current = customer.todayEntry?.emptyCansReturned || 0;
-    handleEmptyCansValueChange(customerId, current + delta);
+  const handleQuickAddEmpty = (customerId, delta) => {
+    const current = getDraft(customerId).empty;
+    handleEmptyCansChange(customerId, current + delta);
   };
 
+  // Handle amount paid
   const handlePaidChange = (customerId, newPaid) => {
-    const val = Math.max(0, parseFloat(newPaid) || 0);
-    onUpdateEntry(customerId, {
-      amountPaid: val,
-      saved: false
-    });
+    updateDraft(customerId, { paid: newPaid });
   };
 
-  const handleQuickPayFull = (customerId) => {
-    const customer = customers.find(c => c.id === customerId);
-    if (!customer) return;
-    const todayCost = (customer.todayEntry?.cansBought || 0) * (customer.amountPerCane || 0);
-    onUpdateEntry(customerId, {
-      amountPaid: todayCost,
-      saved: false
-    });
+  const handleQuickPayFull = (customerId, rate) => {
+    const cans = getDraft(customerId).cans;
+    const cost = cans * rate;
+    updateDraft(customerId, { paid: cost });
   };
 
-  const handleSaveEntry = (customerId) => {
-    const customer = customers.find(c => c.id === customerId);
-    if (!customer) return;
+  // SAVE DELIVERY ENTRY (Adds to customer details, accumulating with any previous deliveries today)
+  const handleSaveDeliveryEntry = (customer) => {
+    const draft = getDraft(customer.id);
+    const cansVal = Number(draft.cans) || 0;
+    const emptyVal = Number(draft.empty) || 0;
+    const paidVal = draft.paid === '' ? 0 : (parseFloat(draft.paid) || 0);
+    const rate = customer.amountPerCane || 35;
 
-    onUpdateEntry(customerId, {
-      saved: true,
-      lastUpdated: new Date().toISOString()
-    });
-
-    setSavedFeedbacks(prev => ({ ...prev, [customerId]: true }));
-    setTimeout(() => {
-      setSavedFeedbacks(prev => ({ ...prev, [customerId]: false }));
-    }, 2200);
-
-    const todayCans = customer.todayEntry?.cansBought || 0;
-    const rate = customer.amountPerCane || 0;
-    const todayPaid = customer.todayEntry?.amountPaid || 0;
-    const todayBending = (todayCans * rate) - todayPaid;
-    if (todayBending <= 0 && todayCans > 0) {
-      confetti({
-        particleCount: 25,
-        spread: 60,
-        origin: { y: 0.8 }
-      });
+    if (cansVal === 0 && emptyVal === 0 && paidVal === 0) {
+      alert('Please enter at least cans delivered, empty cans returned, or amount paid to log a delivery.');
+      return;
     }
+
+    onAddDeliveryEntry(customer.id, {
+      cansDelivered: cansVal,
+      emptyCansReturned: emptyVal,
+      amountPaid: paidVal,
+      rate: rate
+    });
+
+    // Reset draft form for next delivery
+    setDraftEntries(prev => ({
+      ...prev,
+      [customer.id]: {
+        cans: 1,
+        empty: 1,
+        paid: ''
+      }
+    }));
+
+    // Trigger celebration & feedback
+    setSavedFeedbacks(prev => ({ ...prev, [customer.id]: true }));
+    setTimeout(() => {
+      setSavedFeedbacks(prev => ({ ...prev, [customer.id]: false }));
+    }, 2500);
+
+    confetti({
+      particleCount: 35,
+      spread: 60,
+      origin: { y: 0.8 }
+    });
   };
 
   const generateWhatsAppMessage = (customer) => {
-    const cans = customer.todayEntry?.cansBought || 0;
-    const emptyReturned = customer.todayEntry?.emptyCansReturned || 0;
-    const rate = customer.amountPerCane || 0;
-    const paid = customer.todayEntry?.amountPaid || 0;
-    const todayCost = cans * rate;
-    const todayBending = todayCost - paid;
-    const prevBending = customer.previousBendingAmount || 0;
-    const totalBending = prevBending + todayBending;
+    const rate = customer.amountPerCane || 35;
+    const todayCans = customer.todayCans ?? (customer.todayEntry?.cansBought || 0);
+    const todayEmpty = customer.todayEmpty ?? (customer.todayEntry?.emptyCansReturned || 0);
+    const todayPaid = customer.todayPaid ?? (customer.todayEntry?.amountPaid || 0);
+    const todayCost = todayCans * rate;
+    const totalBending = customer.totalOutstandingBending ?? 0;
 
     const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -161,22 +202,17 @@ export function CaneEntries({
     message += `Date: ${dateStr}\n`;
     message += `Customer: *${customer.name}*\n`;
     message += `--------------------------------\n`;
-    message += `Cans Delivered Today: *${cans} Cans* @ ₹${rate}/can\n`;
-    message += `Empty Cans Returned Today: *${emptyReturned} Cans*\n`;
+    message += `Total Cans Delivered Today: *${todayCans} Cans* @ ₹${rate}/can\n`;
+    message += `Empty Cans Returned Today: *${todayEmpty} Cans*\n`;
     message += `Today's Bill Amount: ₹${todayCost}\n`;
-    message += `Amount Paid Today: ₹${paid}\n`;
+    message += `Amount Paid Today: ₹${todayPaid}\n`;
     
-    if (todayBending > 0) {
-      message += `Today's Bending: *₹${todayBending}*\n`;
-    }
-    if (prevBending > 0) {
-      message += `Previous Dues: ₹${prevBending}\n`;
-    }
-    message += `--------------------------------\n`;
     if (totalBending > 0) {
+      message += `--------------------------------\n`;
       message += `*Total Outstanding Bending: ₹${totalBending}*\n`;
       message += `Kindly pay via GPay / UPI: ${businessInfo.upiId}\n`;
     } else {
+      message += `--------------------------------\n`;
       message += `*Status: Fully Paid / All Clear ✅*\n`;
       message += `Thank you for your business!\n`;
     }
@@ -186,9 +222,15 @@ export function CaneEntries({
     return encodeURIComponent(message);
   };
 
+  // Find latest customer instance to pass to modal
+  const modalCustomer = useMemo(() => {
+    if (!selectedCustomerForHistory) return null;
+    return customers.find(c => c.id === selectedCustomerForHistory.id) || selectedCustomerForHistory;
+  }, [customers, selectedCustomerForHistory]);
+
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4">
-      {/* Search & Filter Bar (Direct top element as requested, removing subheader in image 1) */}
+      {/* Search & Filter Bar */}
       <div className="p-1 rounded-2xl bg-white border border-slate-200/90 shadow-sm mb-6">
         <div className="p-2 sm:p-3 rounded-xl bg-slate-50/70 flex flex-col gap-3">
           {/* Main search bar */}
@@ -259,7 +301,7 @@ export function CaneEntries({
         </div>
       </div>
 
-      {/* Customer Cards List: Strict Vertical Flow */}
+      {/* Customer Cards List */}
       {customers.length === 0 ? (
         <div className="p-1 rounded-3xl bg-white border border-slate-200/90 shadow-bezel-outer text-center py-16">
           <div className="rounded-2xl bg-white p-8 max-w-md mx-auto bezel-core">
@@ -352,20 +394,28 @@ export function CaneEntries({
       ) : (
         <div className="space-y-6">
           {filteredCustomers.map((customer) => {
-            const todayCans = customer.todayEntry?.cansBought || 0;
             const rate = customer.amountPerCane || 35;
-            const todayPaid = customer.todayEntry?.amountPaid || 0;
-            const todayCost = todayCans * rate;
-            
-            // USER FORMULA:
-            // bending amount = (number of cane * amount per cane - amount paied)
-            const todayBending = todayCost - todayPaid;
-            const prevBending = customer.previousBendingAmount || 0;
-            const totalOutstandingBending = prevBending + todayBending;
+            const draft = getDraft(customer.id, rate);
 
-            const isSaved = customer.todayEntry?.saved;
+            // Today's aggregate totals across all deliveries today
+            const todayEntries = (customer.entries || []).filter(e => e.date === todayStr);
+            const todayCans = customer.todayCans ?? (customer.todayEntry?.cansBought || 0);
+            const todayEmpty = customer.todayEmpty ?? (customer.todayEntry?.emptyCansReturned || 0);
+            const todayPaid = customer.todayPaid ?? (customer.todayEntry?.amountPaid || 0);
+            const todayCost = todayCans * rate;
+            const todayBending = Math.max(0, todayCost - todayPaid);
+            const prevBending = customer.previousBendingAmount || 0;
+            const totalOutstandingBending = customer.totalOutstandingBending ?? (prevBending + todayBending);
+
             const justSaved = savedFeedbacks[customer.id];
-            const emptyCansReturned = customer.todayEntry?.emptyCansReturned || 0;
+            const hasDeliveriesToday = todayCans > 0 || todayEntries.length > 0;
+            const isTodayLogOpen = Boolean(expandedTodayLogIds[customer.id]);
+
+            // Draft values currently entered in the boxes for next delivery
+            const draftCans = draft.cans;
+            const draftEmpty = draft.empty;
+            const draftPaid = draft.paid;
+            const draftCost = draftCans * rate;
 
             return (
               <div 
@@ -373,8 +423,8 @@ export function CaneEntries({
                 className="p-1 rounded-3xl bg-white border border-slate-200/90 shadow-bezel-outer hover:shadow-bezel-inner transition-all duration-300"
               >
                 <div className="rounded-2xl bg-white p-5 sm:p-6 bezel-core space-y-4">
-                  {/* CARD HEADER (Customer Details) */}
-                  <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
+                  {/* CARD HEADER (Customer Details + View All Entries Button) */}
+                  <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 flex-wrap sm:flex-nowrap">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-lg font-bold text-slate-900">
@@ -401,8 +451,19 @@ export function CaneEntries({
                       </div>
                     </div>
 
-                    {/* Status badge and delete button */}
-                    <div className="shrink-0 flex items-center gap-2">
+                    {/* Status badge and View All Entries feature button */}
+                    <div className="shrink-0 flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                      {/* VIEW ALL ENTRIES FEATURE BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCustomerForHistory(customer)}
+                        className="tactile-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 shadow-sm transition-all"
+                        title="View complete date & time delivery log for this customer"
+                      >
+                        <ClockCounterClockwise weight="bold" className="w-4 h-4 text-ocean-400" />
+                        <span>View All Entries ({customer.entries?.length || 0})</span>
+                      </button>
+
                       {totalOutstandingBending > 0 ? (
                         <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
@@ -431,7 +492,114 @@ export function CaneEntries({
                     </div>
                   </div>
 
-                  {/* VERTICAL ITEM 1: No. of Cane Delivered Today (Renamed from Buyed to Delivered) */}
+                  {/* TODAY'S ACCUMULATED SUMMARY BANNER (SOLVES: Displays only last entries) */}
+                  {hasDeliveriesToday && (
+                    <div className="rounded-2xl bg-ocean-50/70 border border-ocean-200 p-3.5 sm:p-4 space-y-2.5">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-ocean-600 animate-pulse"></span>
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-ocean-900">
+                            Today's Total Logged Deliveries
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-ocean-200/80 text-ocean-900">
+                            {todayEntries.length} {todayEntries.length === 1 ? 'delivery' : 'deliveries'} today
+                          </span>
+                        </div>
+
+                        {todayEntries.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => toggleTodayLog(customer.id)}
+                            className="text-xs font-bold text-ocean-700 hover:text-ocean-900 flex items-center gap-1 transition-colors"
+                          >
+                            <span>{isTodayLogOpen ? 'Hide Today Entries' : 'View Today Entries'}</span>
+                            {isTodayLogOpen ? (
+                              <CaretUp weight="bold" className="w-3.5 h-3.5" />
+                            ) : (
+                              <CaretDown weight="bold" className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Today's cumulative stat pills */}
+                      <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                        <div className="p-2 rounded-xl bg-white border border-ocean-200/80 shadow-2xs">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block">Delivered Today</span>
+                          <span className="text-sm sm:text-base font-black text-ocean-700 font-mono">
+                            {todayCans} Cans
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-white border border-ocean-200/80 shadow-2xs">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block">Empty Returned</span>
+                          <span className="text-sm sm:text-base font-black text-amber-700 font-mono">
+                            {todayEmpty} Empty
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-white border border-ocean-200/80 shadow-2xs">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block">Paid Today</span>
+                          <span className="text-sm sm:text-base font-black text-emerald-700 font-mono">
+                            ₹{todayPaid}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Expandable list of all deliveries made TODAY */}
+                      {isTodayLogOpen && todayEntries.length > 0 && (
+                        <div className="pt-2 border-t border-ocean-200/70 space-y-1.5 animate-slide-down">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-ocean-800 block mb-1">
+                            Individual Deliveries Today:
+                          </span>
+                          {todayEntries.map((entry, eIdx) => (
+                            <div 
+                              key={entry.id || eIdx}
+                              className="p-2 rounded-xl bg-white/90 border border-ocean-100 flex items-center justify-between text-xs font-mono"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-500">#{eIdx + 1}</span>
+                                <span className="text-slate-700 font-sans font-semibold">
+                                  {entry.time || formatDisplayTime(null, entry.timestamp) || 'Today'}
+                                </span>
+                                <span className="text-ocean-700 font-bold">
+                                  • {entry.cansDelivered} cans
+                                </span>
+                                <span className="text-amber-700">
+                                  • {entry.emptyCansReturned} empty
+                                </span>
+                                <span className="text-emerald-700 font-bold">
+                                  • ₹{entry.amountPaid} paid
+                                </span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => onDeleteEntry(customer.id, entry.id)}
+                                className="text-slate-400 hover:text-rose-600 p-1 rounded transition-colors"
+                                title="Remove this delivery entry"
+                              >
+                                <Trash weight="bold" className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SUBHEADER: LOG NEW / ANOTHER DELIVERY */}
+                  <div className="pt-1">
+                    <p className="text-xs font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Plus weight="bold" className="w-3.5 h-3.5 text-ocean-600" />
+                      <span>{hasDeliveriesToday ? "Add Another Delivery to Today's Account" : "Log Today's Delivery"}</span>
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {hasDeliveriesToday 
+                        ? "Enter additional cans delivered, empty cans collected, or amount paid. It will automatically add to today's totals." 
+                        : "Enter cans delivered, empty cans collected, and amount paid for today."}
+                    </p>
+                  </div>
+
+                  {/* VERTICAL ITEM 1: No. of Cane Delivered (For this delivery) */}
                   <div className="bg-slate-50/90 rounded-2xl p-4 border border-slate-200/80 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -439,22 +607,22 @@ export function CaneEntries({
                           1
                         </span>
                         <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                          No. of Cane Delivered Today
+                          No. of Cane Delivered
                         </label>
                       </div>
                       <span className="text-xs font-bold text-ocean-700 font-mono bg-ocean-50 px-2 py-0.5 rounded-lg border border-ocean-200">
-                        Today's Cost: ₹{todayCost}
+                        Delivery Cost: ₹{draftCost}
                       </span>
                     </div>
 
-                    {/* Counter Row that fits the entire box width */}
+                    {/* Counter Row */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-stretch">
-                      {/* Left: Enclosed Minus, Flex-1 Input, Plus */}
+                      {/* Left: Minus, Input, Plus */}
                       <div className="sm:col-span-6 flex items-stretch gap-1.5 bg-white p-1 rounded-xl border border-slate-200/90 shadow-sm">
                         <button
                           type="button"
-                          onClick={() => handleCansChange(customer.id, todayCans - 1)}
-                          disabled={todayCans <= 0}
+                          onClick={() => handleCansChange(customer.id, draftCans - 1)}
+                          disabled={draftCans <= 0}
                           className="w-12 h-10 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed tactile-btn"
                         >
                           <Minus weight="bold" className="w-4 h-4" />
@@ -463,14 +631,14 @@ export function CaneEntries({
                         <input
                           type="number"
                           min="0"
-                          value={todayCans}
+                          value={draftCans}
                           onChange={(e) => handleCansChange(customer.id, e.target.value)}
                           className="flex-1 min-w-0 h-10 text-center bg-transparent text-lg font-black text-slate-900 focus:outline-none num-tabular"
                         />
 
                         <button
                           type="button"
-                          onClick={() => handleCansChange(customer.id, todayCans + 1)}
+                          onClick={() => handleCansChange(customer.id, draftCans + 1)}
                           className="w-12 h-10 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-100 tactile-btn"
                         >
                           <Plus weight="bold" className="w-4 h-4" />
@@ -493,7 +661,7 @@ export function CaneEntries({
                     </div>
                   </div>
 
-                  {/* VERTICAL ITEM 2: Empty Cane Returned Today */}
+                  {/* VERTICAL ITEM 2: Empty Cane Returned */}
                   <div className="bg-slate-50/90 rounded-2xl p-4 border border-slate-200/80 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -501,7 +669,7 @@ export function CaneEntries({
                           2
                         </span>
                         <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                          Empty Cane Returned Today
+                          Empty Cane Returned
                         </label>
                       </div>
                       <span className="text-xs font-bold text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
@@ -509,13 +677,13 @@ export function CaneEntries({
                       </span>
                     </div>
 
-                    {/* Counter Row fitting the entire box width */}
+                    {/* Counter Row */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-stretch">
                       <div className="sm:col-span-6 flex items-stretch gap-1.5 bg-white p-1 rounded-xl border border-slate-200/90 shadow-sm">
                         <button
                           type="button"
-                          onClick={() => handleEmptyCansValueChange(customer.id, emptyCansReturned - 1)}
-                          disabled={emptyCansReturned <= 0}
+                          onClick={() => handleEmptyCansChange(customer.id, draftEmpty - 1)}
+                          disabled={draftEmpty <= 0}
                           className="w-12 h-10 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed tactile-btn"
                         >
                           <Minus weight="bold" className="w-4 h-4" />
@@ -524,14 +692,14 @@ export function CaneEntries({
                         <input
                           type="number"
                           min="0"
-                          value={emptyCansReturned}
-                          onChange={(e) => handleEmptyCansValueChange(customer.id, e.target.value)}
+                          value={draftEmpty}
+                          onChange={(e) => handleEmptyCansChange(customer.id, e.target.value)}
                           className="flex-1 min-w-0 h-10 text-center bg-transparent text-lg font-black text-slate-900 focus:outline-none num-tabular"
                         />
 
                         <button
                           type="button"
-                          onClick={() => handleEmptyCansValueChange(customer.id, emptyCansReturned + 1)}
+                          onClick={() => handleEmptyCansChange(customer.id, draftEmpty + 1)}
                           className="w-12 h-10 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 hover:bg-slate-100 tactile-btn"
                         >
                           <Plus weight="bold" className="w-4 h-4" />
@@ -543,7 +711,7 @@ export function CaneEntries({
                           <button
                             key={amt}
                             type="button"
-                            onClick={() => handleQuickAddEmptyCans(customer.id, amt)}
+                            onClick={() => handleQuickAddEmpty(customer.id, amt)}
                             className="h-12 sm:h-auto rounded-xl bg-white border border-slate-200 text-slate-700 font-extrabold text-xs sm:text-sm hover:bg-slate-100 hover:border-slate-300 active:scale-95 transition-all shadow-sm flex items-center justify-center"
                           >
                             +{amt}
@@ -553,7 +721,7 @@ export function CaneEntries({
                     </div>
                   </div>
 
-                  {/* VERTICAL ITEM 3: Amount Paied Today */}
+                  {/* VERTICAL ITEM 3: Amount Paid for this Delivery */}
                   <div className="bg-slate-50/90 rounded-2xl p-4 border border-slate-200/80 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -561,7 +729,7 @@ export function CaneEntries({
                           3
                         </span>
                         <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                          Amount Paied Today
+                          Amount Paid Today
                         </label>
                       </div>
                       <span className="text-[11px] font-semibold text-slate-400">
@@ -569,7 +737,7 @@ export function CaneEntries({
                       </span>
                     </div>
 
-                    {/* Input & Quick presets fitting the entire box width */}
+                    {/* Input & Quick presets */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-stretch">
                       <div className="sm:col-span-6 relative">
                         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500 font-bold text-base">
@@ -579,7 +747,7 @@ export function CaneEntries({
                           type="number"
                           min="0"
                           step="5"
-                          value={todayPaid}
+                          value={draftPaid}
                           onChange={(e) => handlePaidChange(customer.id, e.target.value)}
                           placeholder="0"
                           className="w-full h-11 pl-9 pr-3.5 bg-white border border-slate-300 rounded-xl text-base font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-ocean-500/20 focus:border-ocean-500 num-tabular shadow-sm"
@@ -589,10 +757,10 @@ export function CaneEntries({
                       <div className="sm:col-span-6 grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => handleQuickPayFull(customer.id)}
+                          onClick={() => handleQuickPayFull(customer.id, rate)}
                           className="h-11 px-2 text-xs font-bold rounded-xl bg-emerald-100 text-emerald-800 hover:bg-emerald-200 active:scale-95 transition-all shadow-sm flex items-center justify-center text-center truncate"
                         >
-                          Full Paid (₹{todayCost})
+                          Full Paid (₹{draftCost})
                         </button>
                         <button
                           type="button"
@@ -611,7 +779,7 @@ export function CaneEntries({
 
                     return (
                       <div className="rounded-2xl border border-amber-200/90 overflow-hidden bg-gradient-to-b from-amber-50/70 to-orange-50/40 transition-all">
-                        {/* Always visible banner: Click to toggle breakdown */}
+                        {/* Always visible banner */}
                         <div
                           onClick={() => toggleBendingDetails(customer.id)}
                           className="p-4 sm:p-5 flex items-center justify-between cursor-pointer hover:bg-amber-100/50 transition-colors select-none"
@@ -659,21 +827,21 @@ export function CaneEntries({
                           <div className="px-4 sm:px-5 pb-5 pt-3 border-t border-amber-200/70 space-y-3 bg-white/80">
                             <div className="flex items-center justify-between pb-2 border-b border-amber-200/50 text-[11px] font-mono text-amber-800">
                               <span className="font-bold uppercase tracking-wider text-[10px]">Formula</span>
-                              <span>(number of cane * amount per cane - amount paied)</span>
+                              <span>(all cans delivered * amount per can - all amount paid)</span>
                             </div>
 
-                            {/* Step-by-Step Vertical Formula Display */}
+                            {/* Step-by-Step Formula Display */}
                             <div className="space-y-1.5 text-xs text-slate-700 font-mono">
                               <div className="flex justify-between items-center py-1">
-                                <span className="text-slate-600">Total Cane Cost ({todayCans} cans × ₹{rate}):</span>
+                                <span className="text-slate-600">Total Cans Today ({todayCans} cans × ₹{rate}):</span>
                                 <span className="font-bold text-slate-900">₹{todayCost}</span>
                               </div>
                               <div className="flex justify-between items-center py-1">
-                                <span className="text-slate-600">Less Amount Paied:</span>
+                                <span className="text-slate-600">Less Amount Paid Today:</span>
                                 <span className="font-bold text-emerald-700">- ₹{todayPaid}</span>
                               </div>
                               <div className="flex justify-between items-center py-1 border-t border-amber-200/60">
-                                <span className="font-semibold text-slate-800">Today's Bending Amount:</span>
+                                <span className="font-semibold text-slate-800">Today's Remaining Bending:</span>
                                 <span className={`font-bold ${todayBending > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
                                   ₹{todayBending}
                                 </span>
@@ -702,26 +870,26 @@ export function CaneEntries({
                     );
                   })()}
 
-                  {/* VERTICAL ITEM 5: Card Actions (Save & WhatsApp) */}
+                  {/* VERTICAL ITEM 5: Card Actions (Add Delivery, WhatsApp, View All Entries) */}
                   <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                    <div className="text-xs text-slate-400 flex items-center gap-1.5">
-                      {isSaved ? (
-                        <span className="flex items-center gap-1 text-emerald-600 font-semibold">
-                          <Check weight="bold" className="w-4 h-4" />
-                          <span>Entry Saved for Today</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">Unsaved changes</span>
-                      )}
+                    <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCustomerForHistory(customer)}
+                        className="text-ocean-700 hover:text-ocean-900 font-bold hover:underline flex items-center gap-1"
+                      >
+                        <ClockCounterClockwise weight="bold" className="w-4 h-4" />
+                        <span>View complete history ({customer.entries?.length || 0} entries)</span>
+                      </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                       {customer.phone && (
                         <a
                           href={`https://wa.me/91${customer.phone}?text=${generateWhatsAppMessage(customer)}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="tactile-btn flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100"
+                          className="tactile-btn flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100"
                           title="Share Bill via WhatsApp"
                         >
                           <WhatsappLogo weight="fill" className="w-4 h-4 text-emerald-600" />
@@ -729,26 +897,30 @@ export function CaneEntries({
                         </a>
                       )}
 
+                      {/* SAVE / ADD DELIVERY BUTTON */}
                       <button
                         type="button"
-                        onClick={() => handleSaveEntry(customer.id)}
+                        onClick={() => handleSaveDeliveryEntry(customer)}
                         className={`tactile-btn flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-md ${
                           justSaved
                             ? 'bg-emerald-600 text-white'
-                            : isSaved
-                              ? 'bg-slate-900 text-white hover:bg-slate-800'
-                              : 'bg-ocean-600 text-white hover:bg-ocean-700'
+                            : 'bg-ocean-600 text-white hover:bg-ocean-700'
                         }`}
                       >
                         {justSaved ? (
                           <>
                             <Check weight="bold" className="w-4 h-4 animate-bounce" />
-                            <span>Saved Successfully!</span>
+                            <span>Delivery Added! Total: {todayCans} Cans</span>
                           </>
                         ) : (
                           <>
                             <CalendarCheck weight="bold" className="w-4 h-4" />
-                            <span>{isSaved ? 'Update Today Entry' : 'Save Today Entry'}</span>
+                            <span>
+                              {hasDeliveriesToday 
+                                ? `+ Add Delivery (${draftCans} Cans • Total: ${todayCans + draftCans})` 
+                                : `Save Delivery Entry (${draftCans} Cans)`
+                              }
+                            </span>
                           </>
                         )}
                       </button>
@@ -761,7 +933,19 @@ export function CaneEntries({
         </div>
       )}
 
-      {/* Customer Delete Permission Confirmation Modal */}
+      {/* 1. Customer Entries History Modal ("View All Entries in Customer") */}
+      {modalCustomer && (
+        <CustomerEntriesModal
+          isOpen={Boolean(modalCustomer)}
+          onClose={() => setSelectedCustomerForHistory(null)}
+          customer={modalCustomer}
+          onAddEntry={onAddDeliveryEntry}
+          onDeleteEntry={onDeleteEntry}
+          businessInfo={businessInfo}
+        />
+      )}
+
+      {/* 2. Customer Delete Permission Confirmation Modal */}
       {customerToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
           <div 
@@ -787,7 +971,7 @@ export function CaneEntries({
                 Are you sure you want to delete <strong className="text-slate-900 font-extrabold">{customerToDelete.name}</strong>?
               </p>
               <p className="text-[11px] text-rose-600 font-medium">
-                ⚠️ This will permanently remove this customer's profile, daily delivery records, empty cans log, and all pending balances.
+                ⚠️ This will permanently remove this customer's profile, all daily delivery records, empty cans log, and all pending balances.
               </p>
             </div>
 
@@ -802,9 +986,7 @@ export function CaneEntries({
               <button
                 type="button"
                 onClick={() => {
-                  if (onDeleteCustomer) {
-                    onDeleteCustomer(customerToDelete.id);
-                  }
+                  onDeleteCustomer(customerToDelete.id);
                   setCustomerToDelete(null);
                 }}
                 className="tactile-btn px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-sm transition-colors"
